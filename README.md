@@ -147,19 +147,65 @@ aurea-wp-666/
 
 ## Aan de slag
 
-1. **Bedrading:** zie [WIRING.md](WIRING.md). Kort: ESP32 in de IC1-socket,
-   GPIO17→pin 26 (TX), pin 27→GPIO16 (RX, met 10k naar GND), 5V/GND. Geen
-   levelshifter nodig — de optocouplers doen de scheiding al.
-2. **Secrets:** `cp secrets.yaml.example secrets.yaml` en vul je wifi + een
-   API-sleutel in.
-3. **Flashen:** eerste keer via USB, daarna OTA:
+**Bedrading eerst:** zie [WIRING.md](WIRING.md). Kort: ESP32 in de IC1-socket,
+GPIO17→pin 26 (TX), pin 27→GPIO16 (RX, met 10k naar GND), 5V/GND. Geen
+levelshifter nodig — de optocouplers doen de scheiding al.
+
+Daarna kun je twee kanten op. Kies er één als thuisbasis: beide kunnen OTA
+flashen, maar ze weten niets van elkaars wijzigingen.
+
+### A. Vanaf je eigen machine
+
+```bash
+git clone https://github.com/Aapjedotinfo/atlantic-aurea-esphome
+cd atlantic-aurea-esphome
+cp secrets.yaml.example secrets.yaml   # wifi + api-sleutel invullen
+esphome run aurea-wp.yaml              # eerste keer via USB, daarna OTA
+```
+
+### B. In de Home Assistant ESPHome Device Builder
+
+Je hoeft geen bestanden te kopiëren: het `chofu_wp`-component wordt
+rechtstreeks uit deze repo gehaald, dus alles kan in de webinterface.
+
+1. **+ NEW DEVICE** → naam `aurea-wp` → ESP32 → *Skip* bij het installeren.
+2. Klik **EDIT** en vervang de gegenereerde inhoud door die van
+   [`aurea-wp.yaml`](aurea-wp.yaml). Wissel daarin dit blok:
+
+   ```yaml
+   external_components:
+     - source:
+         type: local
+         path: components
    ```
-   esphome run aurea-wp.yaml
+
+   voor:
+
+   ```yaml
+   external_components:
+     - source:
+         type: git
+         url: https://github.com/Aapjedotinfo/atlantic-aurea-esphome
+         ref: main
+       components: [chofu_wp]
    ```
-   Of importeer in de Home Assistant **ESPHome Device Builder**: kopieer
-   `aurea-wp.yaml` + de map `components/` naar de addon-configmap en vul de keys
-   (`wifi_ssid`, `wifi_password`, `api_encryption`, `fallback_password`) in je
-   `secrets.yaml` aan.
+
+3. Menu rechtsboven → **Secrets** → `wifi_ssid`, `wifi_password`,
+   `fallback_password` en `api_encryption` toevoegen.
+4. **INSTALL** → *Wirelessly*.
+
+> **Wissel je van A naar B?** Neem dan je bestaande `api_encryption` mee en
+> houd `name: aurea-wp` gelijk. Met een nieuwe sleutel verliest Home Assistant
+> de verbinding, en met een andere naam krijg je er een tweede device bij.
+
+> ESPHome cachet git-bronnen. Update je later `chofu_wp` in deze repo, zet dan
+> tijdelijk `refresh: 0s` in het `source`-blok — anders bouwt hij door op de
+> oude kopie.
+
+Liever tóch lokale bestanden in de addon? Zet dan `aurea-wp.yaml` in
+`/config/esphome/` en de hele map `components/chofu_wp/` in
+`/config/esphome/components/`; het `external_components`-blok blijft dan
+ongewijzigd, want `path: components` is relatief aan de yaml.
 
 ## Diagnose
 
