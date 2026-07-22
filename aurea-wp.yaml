@@ -79,8 +79,10 @@ number:
   - platform: template
     name: "Setpoint aanvoer"
     id: n_setpoint
-    min_value: 20
-    max_value: 45
+    # Volledig technisch bereik uit de Chofu-datasheet (AEYC-0643XU):
+    # leaving water temperature -> koelen 6.5°C~ , verwarmen ~60°C
+    min_value: 6.5
+    max_value: 60
     step: 0.5
     initial_value: 35
     optimistic: true
@@ -107,6 +109,26 @@ number:
       then:
         - lambda: 'id(wp)->set_manual_stand((int) x);'
 
+  # Hoe snel de regeling mag bijsturen: maximaal ±1 stand per interval.
+  # Lang (120s) = rustig, compressorvriendelijk bij verwarmen.
+  # Kort (30-45s) = kordaat, handig bij koelen waar de traagheid je tegenwerkt.
+  - platform: template
+    name: "Stap-interval"
+    id: n_step_interval
+    min_value: 10
+    max_value: 600
+    step: 5
+    initial_value: 120
+    optimistic: true
+    restore_value: true
+    unit_of_measurement: "s"
+    mode: box
+    icon: mdi:timer-cog-outline
+    entity_category: config
+    on_value:
+      then:
+        - lambda: 'id(wp)->set_step_interval((uint32_t) (x * 1000));'
+
 select:
   - platform: template
     name: "Modus"
@@ -129,6 +151,21 @@ switch:
       - lambda: 'id(wp)->set_system_on(true);'
     turn_off_action:
       - lambda: 'id(wp)->set_system_on(false);'
+
+  # EXPERIMENTEEL: koelbedrijf (data2 byte 4 = 0x02 i.p.v. 0x01). Komt uit één
+  # forumpost en is niet geverifieerd - mogelijk negeert de WP het gewoon.
+  # Staat na een reboot altijd weer op verwarmen. Let op condensvorming op
+  # niet-geïsoleerde CV-leidingen en radiatoren.
+  - platform: template
+    name: "Koelen"
+    optimistic: true
+    restore_mode: ALWAYS_OFF
+    entity_category: config
+    icon: mdi:snowflake
+    turn_on_action:
+      - lambda: 'id(wp)->set_cooling(true);'
+    turn_off_action:
+      - lambda: 'id(wp)->set_cooling(false);'
 
   # Diagnose: zet de ruwe FRAME-hexlog aan/uit (standaard uit). Handig bij
   # sleutelen aan de bekabeling; laat 'm normaal uit voor een schone log.
@@ -225,10 +262,9 @@ binary_sensor:
     lambda: 'return id(wp)->get_running();'
     device_class: running
 
-  - platform: template
-    name: "Defrost"
-    lambda: 'return id(wp)->get_defrost();'
-    icon: mdi:snowflake-melt
+  # "Defrost" tijdelijk verwijderd: de byte die we ervoor gebruikten (ID1 idx4)
+  # bleek gewoon een bedrijfsstatus (0x01 zodra de unit draait). Zodra de echte
+  # defrost-byte gevonden is komt deze sensor terug.
 
   - platform: template
     name: "Communicatie"

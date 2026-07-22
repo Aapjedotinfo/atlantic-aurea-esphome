@@ -30,7 +30,9 @@ void ChofuWP::setup() {
 
 void ChofuWP::dump_config() {
   ESP_LOGCONFIG(TAG, "Chofu WP (666 baud):");
-  ESP_LOGCONFIG(TAG, "  Setpoint aanvoer: %.1f°C", setpoint_);
+  ESP_LOGCONFIG(TAG, "  Setpoint aanvoer: %.1f°C (bereik %.0f-%.0f)", setpoint_, setpoint_min_,
+                setpoint_max_);
+  ESP_LOGCONFIG(TAG, "  Bedrijfsmodus: %s", cooling_ ? "koelen" : "verwarmen");
   ESP_LOGCONFIG(TAG, "  Regeling: delta-T-band %.1f-%.1f°C, max stand %u, stap elke %us", dt_low_,
                 dt_high_, max_stand_, (unsigned) (step_interval_ms_ / 1000));
   this->check_uart_settings(666);
@@ -74,6 +76,7 @@ void ChofuWP::handle_rx_() {
     if (!this->read_byte(&b))
       break;
     is_receiving_ = true;
+    last_byte_ms_ = millis();  // Voor de lijn-stiltebewaking in maybe_send_()
 
     switch (rx_state_) {
       case WAIT_START:
@@ -91,13 +94,13 @@ void ChofuWP::handle_rx_() {
         if (rx_hdr_idx_ == 0) {
           rx_id_ = b;
           if (rx_id_ > 3) {  // ID moet 0-3 zijn
-            rx_state_ = WAIT_START;
+            this->abort_frame_("ongeldig ID");
             break;
           }
         } else if (rx_hdr_idx_ == 1) {
           uint8_t msg_length = b + 1;
           if (!valid_msg_length_(msg_length)) {
-            rx_state_ = WAIT_START;
+            this->abort_frame_("ongeldige lengte");
             break;
           }
           rx_datalen_ = msg_length - 3;
@@ -146,7 +149,10 @@ void ChofuWP::finish_frame_() {
   // Temperaturen: signed 16-bit LITTLE-endian (LSB eerst), /10.
   switch (rx_id_) {
     case 1:
-      defrost_ = frame_[4] != 0;
+      // ID1 idx4 was aangemerkt als "defrost", maar metingen laten zien dat
+      // die byte gewoon 0x01 wordt zodra de unit draait (en 0x00 als hij stil
+      // staat) - het is een bedrijfsstatus, geen defrost. Tot we de echte
+      // defrost-byte kennen niet meer als defrost publiceren.
       break;
     case 2:
       t_supply_ = (int16_t) ((frame_[4] << 8) | frame_[3]) / 10.0f;
@@ -162,11 +168,29 @@ void ChofuWP::finish_frame_() {
   }
 }
 
+// Frame afgekeurd in de header (ongeldig ID/lengte). Belangrijk: ook hier de
+// timing bijwerken, anders blijft is_receiving_ hangen en valt maybe_send_()
+// terug op de blinde timeout - precies wat botsingen veroorzaakte.
+void ChofuWP::abort_frame_(const char *reason) {
+  if (raw_debug_)
+    ESP_LOGD(TAG, "RX afgebroken (%s) - resync", reason);
+  is_receiving_ = false;
+  prev_msg_in_ended_ms_ = millis();
+  rx_state_ = WAIT_START;
+}
+
 // ═══════════════════════════════════════════════════════════════
 //  TX - stuur het volgende telegram als de master/slave-timing dat toelaat
 // ═══════════════════════════════════════════════════════════════
 void ChofuWP::maybe_send_() {
   const uint32_t now = millis();
+
+  // HARDE botsingsbescherming: nooit zenden zolang er nog bytes binnendruppelen.
+  // Vertrouwt niet op de parser-state (die kan ontsporen op een corrupt frame),
+  // maar puur op de lijn zelf. Voorkomt dat ons telegram midden in een frame
+  // van de warmtepomp belandt.
+  if (now - last_byte_ms_ < LINE_IDLE_MS)
+    return;
 
   const bool after_rx = (now - prev_msg_in_ended_ms_ >= SEND_DELAY_MS) && !is_receiving_;
   const bool timed_out = (now - prev_msg_in_ended_ms_ >= SEND_TIMEOUT_MS);
@@ -196,7 +220,10 @@ void ChofuWP::maybe_send_() {
   prev_msg_sent_ms_ = now;
 }
 
-// data2: 19 02 08 <on/off> <stand> 00 <crc_hi> <crc_lo>
+// data2: 19 02 08 <modus> <stand> 00 <crc_hi> <crc_lo>
+// modus: 0x00 = uit, 0x01 = verwarmen, 0x02 = koelen.
+// LET OP: 0x02 komt uit één forumpost en is niet door JGC gebruikt - het is
+// dus experimenteel. De WP negeert het mogelijk gewoon.
 void ChofuWP::build_data2_(uint8_t *out) {
   out[0] = 0x19;
   out[1] = 0x02;
@@ -205,7 +232,7 @@ void ChofuWP::build_data2_(uint8_t *out) {
     out[3] = 0x00;  // uit
     out[4] = 0x00;
   } else {
-    out[3] = 0x01;  // aan
+    out[3] = cooling_ ? 0x02 : 0x01;  // koelen of verwarmen
     out[4] = stand_;
   }
   out[5] = 0x00;
@@ -245,9 +272,22 @@ void ChofuWP::run_control_() {
   if (std::isnan(t_supply_) || std::isnan(t_return_))
     return;  // Nog geen data binnen; huidige stand aanhouden
 
-  const float dt = t_supply_ - t_return_;       // delta-T
-  const float err = setpoint_ - t_supply_;      // >0 = aanvoer te koud
+  // Koelen keert alles om: dan wil je de aanvoer juist OMLAAG naar het
+  // setpoint, en is de retour warmer dan de aanvoer. Door beide grootheden
+  // mode-afhankelijk te definiëren blijft de regel-tabel hieronder identiek:
+  // err > 0 = meer vermogen nodig, dt = hoeveel de WP daadwerkelijk verzet.
+  const float dt = cooling_ ? (t_return_ - t_supply_) : (t_supply_ - t_return_);
+  const float err = cooling_ ? (t_supply_ - setpoint_) : (setpoint_ - t_supply_);
   const float band = 0.3f;                       // dode zone rond setpoint
+
+  // Absolute vorstbeveiliging bij koelen (default 5°C, onder de fabrieksgrens
+  // van 6.5°C - zit legitiem bedrijf dus nooit in de weg).
+  if (cooling_ && t_supply_ < cooling_min_supply_) {
+    if (stand_ != 0)
+      ESP_LOGW(TAG, "Koelen: aanvoer %.1f°C te laag - stop", t_supply_);
+    stand_ = 0;
+    return;
+  }
 
   // ── Richting kiezen: +1 meer / -1 minder / 0 houden ──
   // Delta-T tempert de keuze: aanvoer te koud MAAR delta-T al hoog -> HOUDEN.
@@ -279,8 +319,17 @@ void ChofuWP::run_control_() {
 //  Setters
 // ═══════════════════════════════════════════════════════════════
 void ChofuWP::set_setpoint(float v) {
-  setpoint_ = clamp(v, 20.0f, 45.0f);
+  setpoint_ = clamp(v, setpoint_min_, setpoint_max_);
   ESP_LOGI(TAG, "Setpoint aanvoer: %.1f°C", setpoint_);
+}
+
+void ChofuWP::set_cooling(bool c) {
+  if (c == cooling_)
+    return;
+  cooling_ = c;
+  stand_ = 0;          // Altijd via stand 0 wisselen, nooit vliegend omkeren
+  last_step_ms_ = 0;   // Mag daarna direct weer opbouwen
+  ESP_LOGI(TAG, "Bedrijfsmodus: %s", c ? "KOELEN (experimenteel)" : "verwarmen");
 }
 
 void ChofuWP::set_system_on(bool on) {

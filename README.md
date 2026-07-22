@@ -33,20 +33,45 @@ de rest zijn vaste constanten:
 ```
 data0 = 19 00 08 00 00 00 D9 B5
 data1 = 19 01 0C 00 00 00 00 00 00 00 AA 35
-data2 = 19 02 08 <on/off> <stand> 00 <crc_hi> <crc_lo>   ← het commando
+data2 = 19 02 08 <modus> <stand> 00 <crc_hi> <crc_lo>   ← het commando
 data3 = 19 03 08 B2 02 00 C1 9A
 ```
-`data2` byte 4 = on/off (0x00 uit / 0x01 aan; **0x02 = koelen** volgens één
-forumpost, maar ONGETEST — bewust niet in de UI), byte 5 = stand (0–7).
+`data2` byte 4 = **modus**, byte 5 = **stand** (0–7):
+
+| Modus | Betekenis |
+|-------|-----------|
+| `0x00` | uit |
+| `0x01` | verwarmen |
+| `0x02` | **koelen** — ✅ geverifieerd werkend |
+
+> **Koelen werkt echt.** Op het forum stond `0x02` als onbevestigd en JGC's sketch
+> gebruikte het nooit. Getest op echte hardware: na het commando startte de
+> compressor binnen ~6 s en zakte de aanvoer van 37,8 °C naar 23,8 °C, terwijl de
+> retour op 30,0 °C bleef — delta-T van −6,3 °C, dus de aanvoer werd kouder dan de
+> retour. Dat is onmiskenbaar koelbedrijf.
 
 **Ontvangen (WP → controlbox):** `91 <ID> <len> <data…> <crc_hi> <crc_lo>` — géén
 aparte end-byte; na de CRC volgt meteen het volgende telegram. Een frame is geldig
 als CRC-CCITT over het **hele** frame `0` is. Berekend per bericht-ID (0–3):
 
 - **ID2** — temperaturen, signed 16-bit **little-endian**, /10:
-  byte 3-4 = aanvoer, 5-6 = retour, 7-8 = buiten (bv. `ED 00` = 23.7 °C)
-- **ID3** — byte 9 = compressorsnelheid, byte 10 = vermogen (W = 25.6 × byte)
-- **ID1** — byte 4 = defrost
+  byte 3-4 = aanvoer, 5-6 = retour, 7-8 = buiten (bv. `ED 00` = 23.7 °C).
+  Let op: ID2 wisselt af tussen twee payload-varianten; de temperatuur-bytes
+  staan in beide op dezelfde plek, de staart erna verschilt (nog niet ontcijferd).
+- **ID3** — byte 9 = compressorsnelheid, byte 10 = vermogen (W = 25.6 × byte).
+  Het vermogen is geijkt tegen een Shelly PM: byte `0x1A` → 25.6 × 26 = 666 W
+  tegenover 682 W gemeten (~2 % afwijking).
+- **ID1** — nog niet ontcijferd. Byte 4 leek defrost maar blijkt gewoon een
+  bedrijfsstatus (0x01 zodra de unit draait), dus die sensor is verwijderd.
+
+### Timing is kritisch
+
+De buitenunit is master en verdraagt geen verkeer terwijl hij zendt. Zend daarom
+**alleen als de lijn stil is**: minimaal 40 ms geen byte ontvangen (bij 666 baud
+duurt één byte ~15 ms). Vertrouw daarbij niet op je parser-state — die kan
+ontsporen op een corrupt frame, waarna je dwars door de warmtepomp heen gaat
+zenden en álle lange frames sloopt. Je herkent dat probleem aan `0x19`-bytes
+(je eigen telegram) middenin een ontvangen frame.
 
 ## Regeling
 
@@ -63,25 +88,38 @@ op basis van de aanvoerfout én de **delta-T** (aanvoer − retour).
 
 Delta-T is hier bewust een **rem**, geen gaspedaal: bij een koude start is delta-T
 van nature hoog, en dan nóg meer vermogen geven zou overschieten. Daarbovenop
-**stap-modulatie** (max ±1 stand per 2 min) zodat de compressor niet volgas gaat.
-Geen stooklijn, geen tuning-knoppen in de UI.
+**stap-modulatie** (max ±1 stand per interval) zodat de compressor niet volgas
+gaat. Geen stooklijn.
 
-Regelparameters (`dt_low`, `dt_high`, `max_stand`, `step_interval`) staan als
-opties in `aurea-wp.yaml` onder `chofu_wp:` (defaults zijn bewust rustig).
+Bij **koelen** keert de regeling om: dan is de fout `aanvoer − setpoint` en de
+delta-T `retour − aanvoer`, waardoor dezelfde tabel blijft gelden. Het
+stap-interval is instelbaar in Home Assistant — 120 s is rustig en
+compressorvriendelijk voor verwarmen, maar bij koelen werkt die traagheid je
+tegen (je schiet voorbij het setpoint); 30–45 s regelt daar strakker.
+
+**Setpoint-bereik: 6,5 – 60 °C**, het volledige technische bereik uit de
+Chofu-datasheet (*Operating Range / Leaving Water Temperature*: koelen `6.5℃~`,
+verwarmen `~60℃`). Atlantic noemt 55 °C, maar dat is hun overdrachtspunt naar de
+gasketel — geen hardwarelimiet.
+
+Overige parameters (`dt_low`, `dt_high`, `max_stand`, `setpoint_min/max`,
+`cooling_min_supply`) staan als opties in `aurea-wp.yaml` onder `chofu_wp:`.
 
 ### Entiteiten in Home Assistant / web-GUI
 
 | Entiteit | Type | Functie |
 |----------|------|---------|
-| Setpoint aanvoer | number 20–45 °C | primaire knop — gewenste aanvoertemperatuur |
+| Setpoint aanvoer | number 6,5–60 °C | primaire knop — gewenste aanvoertemperatuur |
 | Modus | select | auto (regeling) / handmatig |
 | Handmatige stand | number 0–7 | directe stand in modus handmatig |
+| Stap-interval | number 10–600 s | hoe snel de regeling van stand mag wisselen |
 | Systeem | switch | master aan/uit |
+| Koelen | switch | koelbedrijf i.p.v. verwarmen (uit na reboot) |
 | Debug frames | switch | ruwe FRAME-hexlog aan/uit (standaard uit) |
 | Aanvoer / Retour / Buiten / Delta T | sensor | temperaturen |
 | Vermogen | sensor (W) | echt vermogen uit de WP |
 | Compressor / Stand | sensor | draaisnelheid WP / door ons gestuurde stand |
-| Actief / Defrost / Communicatie | binary_sensor | status |
+| Actief / Communicatie | binary_sensor | status |
 
 Fail-safe: >60 s zonder geldig telegram → terug naar stand 0.
 
@@ -134,6 +172,10 @@ Je past hardware in je warmtepomp-controlbox aan die op netspanning zit en
 (mogelijk) onder garantie valt. Doe dit alleen als je weet wat je doet, en op
 eigen risico. Dit project is niet gelieerd aan of goedgekeurd door Atlantic/Chofu.
 Het protocol is reverse-engineered en kan per model/firmware verschillen.
+
+**Koelen:** een CV-systeem is meestal niet geïsoleerd tegen koud water. Onder het
+dauwpunt gaan leidingen en radiatoren **condenseren** — met kans op waterschade.
+Houd het setpoint hoog genoeg (vuistregel: boven ~17 °C) of isoleer je leidingen.
 
 ## Credits
 

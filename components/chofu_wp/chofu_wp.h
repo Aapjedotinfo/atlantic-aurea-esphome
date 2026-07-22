@@ -51,10 +51,15 @@ class ChofuWP : public PollingComponent, public uart::UARTDevice {
   void set_system_on(bool on);
   void set_auto_mode(bool a);
   void set_manual_stand(int s);
+  void set_cooling(bool c);                       // Koelbedrijf (experimenteel)
+  bool get_cooling() const { return cooling_; }
   void set_raw_debug(bool b) { raw_debug_ = b; }  // FRAME-hexlog aan/uit (web-toggle)
   void force_step() { last_step_ms_ = 0; }  // Volgende cyclus mag direct schakelen
 
   // ── Compile-time config (uit __init__.py) ──
+  void set_setpoint_min(float v) { setpoint_min_ = v; }
+  void set_setpoint_max(float v) { setpoint_max_ = v; }
+  void set_cooling_min_supply(float v) { cooling_min_supply_ = v; }
   void set_dt_low(float v) { dt_low_ = v; }
   void set_dt_high(float v) { dt_high_ = v; }
   void set_max_stand(int v) { max_stand_ = v; }
@@ -64,6 +69,7 @@ class ChofuWP : public PollingComponent, public uart::UARTDevice {
   // ── Protocol ──
   void handle_rx_();
   void finish_frame_();  // Frame compleet: CRC checken + waarden extraheren
+  void abort_frame_(const char *reason);  // Frame afgekeurd in de header
   void maybe_send_();
   void build_data2_(uint8_t *out);
   static uint16_t crc_ccitt_(const uint8_t *data, uint8_t len);
@@ -77,14 +83,27 @@ class ChofuWP : public PollingComponent, public uart::UARTDevice {
   static const uint32_t SEND_TIMEOUT_MS = 2000;       // Fallback als RX uitblijft
   static const uint32_t MIN_SEND_INTERVAL_MS = 300;   // Min. tijd tussen TX's
   static const uint32_t COMM_TIMEOUT_MS = 60000;      // Geen geldige RX -> fail-safe
+  // Harde botsingsbescherming: bij 666 baud duurt één byte ~15 ms, dus 40 ms
+  // stilte op de lijn betekent gegarandeerd dat de WP klaar is met zenden.
+  static const uint32_t LINE_IDLE_MS = 40;
 
   // ── Config / regelparameters ──
   float setpoint_{35.0f};
+  // Volledig technisch bereik uit de Chofu-datasheet (AEYC-0643XU),
+  // "Operating Range / Leaving Water Temperature":
+  //   verwarmen ~60°C  |  koelen 6.5°C~
+  // (Atlantic noemt 55°C, maar dat is hun overdrachtspunt naar de gasketel,
+  //  geen hardwarelimiet.)
+  float setpoint_min_{6.5f}, setpoint_max_{60.0f};
+  // Absolute vorstbeveiliging bij koelen - ligt bewust ONDER de fabrieksgrens
+  // van 6.5°C, dus hij zit legitiem bedrijf nooit in de weg.
+  float cooling_min_supply_{5.0f};
   float dt_low_{4.0f}, dt_high_{8.0f};  // Gezonde delta-T-band (°C)
   uint8_t max_stand_{7};
   uint32_t step_interval_ms_{120000};
   bool system_on_{true};
   bool auto_mode_{true};
+  bool cooling_{false};  // false = verwarmen, true = koelen (experimenteel)
   uint8_t manual_stand_{1};
 
   // ── Regel-state ──
@@ -117,6 +136,7 @@ class ChofuWP : public PollingComponent, public uart::UARTDevice {
   bool raw_debug_{false};
   uint8_t frame_[40];        // Compleet frame vanaf 0x91
   uint8_t frame_len_{0};
+  uint32_t last_byte_ms_{0}; // Tijdstip laatst ontvangen byte (lijn-stiltebewaking)
 };
 
 }  // namespace chofu_wp
