@@ -10,6 +10,13 @@ aanvoer"* — de controller kiest zelf de stand (0–7). De CV-ketel stuur je lo
 alle telegrammen CRC-geldig, temperaturen/vermogen/compressor uitgelezen én de
 buitenunit reageert op de gestuurde stand.
 
+![De controlbox met de ESP32 op de plek van de originele microcontroller](docs/controlbox-esp32.jpg)
+
+*De omgebouwde controlbox. De ESP32 (blauw, met brandende status-LED) zit op de
+plek van de linker ATmega en praat rechtstreeks met de buitenunit; de socket van
+de rechter ATmega — die de OpenTherm-communicatie deed — blijft leeg. Voeding
+gaat via USB, zodat de print zelf niets extra hoeft te leveren.*
+
 ## Herkomst van het protocol
 
 Het protocol is niet openbaar; het is gereverse-engineerd door de forumgebruikers

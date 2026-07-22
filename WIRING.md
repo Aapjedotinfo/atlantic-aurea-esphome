@@ -10,6 +10,12 @@ volledig van de 5V-logica. De ESP32 praat dus alleen met kant-en-klare 5V-signal
 > transistor-driver, en aan de ontvangkant al een emitter-follower. Eén weerstand
 > naar massa aan de RX-kant en een directe draad aan de TX-kant volstaan.
 
+![De controlbox met de ESP32 gemonteerd](docs/controlbox-esp32.jpg)
+
+*Zo ziet het er in het echt uit: de ESP32 op de plek van de linker ATmega, de
+rechter socket leeg, voeding via USB. Linksonder de klemmenstrook naar de
+buitenunit.*
+
 ## Wat er weg moet
 
 - **Beide originele ATmega8L-chips** (IC1 én IC2) uit hun socket halen.
