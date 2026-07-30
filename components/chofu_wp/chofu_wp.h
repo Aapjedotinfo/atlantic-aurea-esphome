@@ -11,7 +11,7 @@
 // zijn overgenomen. Zie ../../README.md en de memory 'aurea-serieel-protocol'.
 //
 // De REGELING is bewust simpel gehouden: "geef me X°C aanvoer" -> deze
-// controller kiest zelf stand 0-7 (met stap-modulatie zodat de compressor
+// controller kiest zelf de stand (0 t/m max_stand; met stap-modulatie zodat de compressor
 // niet volgas de buurman wakker maakt). Plus een handmatige override.
 // Geen stooklijn, geen delta-T-correctie - die zaten in de oude .ino maar
 // zijn hier weggelaten.
@@ -99,6 +99,18 @@ class ChofuWP : public PollingComponent, public uart::UARTDevice {
   // van 6.5°C, dus hij zit legitiem bedrijf nooit in de weg.
   float cooling_min_supply_{5.0f};
   float dt_low_{4.0f}, dt_high_{8.0f};  // Gezonde delta-T-band (°C)
+  // Instelbaar t/m 10; de default blijft 7.
+  // Uit de gedisassembleerde Atlantic-firmware (IC1, "Haddon M1.1") blijkt een
+  // vooraf uitgerekende telegramtabel voor stand 1 t/m 10 - alle met geldige
+  // CRC-16 - en een interne stand-variabele die tot 40 loopt met index =
+  // stand/4. Stand 10 is in het origineel dus echt bereikbaar.
+  // NIET bewezen voor elke buitenunit: die tabel zit in de BINNENunit, en
+  // Atlantic gebruikt een gedeelde codebasis over meerdere modellen (beide
+  // MCU's dragen aantoonbaar dode code van elkaar). JGC gebruikte 6 stappen,
+  // wij 7, de tabel heeft er 10. Verhoog daarom stapsgewijs en controleer of
+  // de sensoren "Vermogen" en "Toerental" - die de WP zelf rapporteert -
+  // daadwerkelijk meestijgen. Blijven die vlak, dan pakt jouw unit de hogere
+  // trappen niet op en is de rest tabelvulling voor een groter model.
   uint8_t max_stand_{7};
   uint32_t step_interval_ms_{120000};
   bool system_on_{true};
@@ -107,7 +119,7 @@ class ChofuWP : public PollingComponent, public uart::UARTDevice {
   uint8_t manual_stand_{1};
 
   // ── Regel-state ──
-  uint8_t stand_{0};        // Gecommandeerde stand 0-7
+  uint8_t stand_{0};        // Gecommandeerde stand, 0 t/m max_stand_
   uint32_t last_step_ms_{0};
 
   // ── Data uit de warmtepomp ──

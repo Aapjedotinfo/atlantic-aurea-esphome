@@ -29,7 +29,10 @@ CONFIG_SCHEMA = (
             # Regeling (compile-time; zelden nodig - default is bewust rustig)
             cv.Optional(CONF_DT_LOW, default=4.0): cv.float_,
             cv.Optional(CONF_DT_HIGH, default=8.0): cv.float_,
-            cv.Optional(CONF_MAX_STAND, default=7): cv.int_range(min=1, max=7),
+            # Plafond 10 (zie chofu_wp.h): het origineel kent stand 1 t/m 10.
+            # Default blijft 7 - verhoog pas als "Vermogen"/"Toerental" laten
+            # zien dat jouw buitenunit die extra trappen echt oppakt.
+            cv.Optional(CONF_MAX_STAND, default=7): cv.int_range(min=1, max=10),
             cv.Optional(
                 CONF_STEP_INTERVAL, default="120s"
             ): cv.positive_time_period_milliseconds,

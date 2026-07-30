@@ -4,7 +4,7 @@ Alternatieve besturing voor de **Atlantic Aurea 5 Hybrid** warmtepomp (een
 kostenbespaarde **Chofu AEYC-0643XU**). Een ESP32 vervangt de linker
 microcontroller in de controlbox en praat rechtstreeks met de buitenunit op het
 eigen 666-baud protocol. Je zegt vanuit **Home Assistant** simpelweg *"geef me X°C
-aanvoer"* — de controller kiest zelf de stand (0–7). De CV-ketel stuur je los aan.
+aanvoer"* — de controller kiest zelf de stand (0–10, default max 7). De CV-ketel stuur je los aan.
 
 **Werkt** — bidirectionele communicatie is live geverifieerd op echte hardware:
 alle telegrammen CRC-geldig, temperaturen/vermogen/compressor uitgelezen én de
@@ -43,7 +43,7 @@ data1 = 19 01 0C 00 00 00 00 00 00 00 AA 35
 data2 = 19 02 08 <modus> <stand> 00 <crc_hi> <crc_lo>   ← het commando
 data3 = 19 03 08 B2 02 00 C1 9A
 ```
-`data2` byte 4 = **modus**, byte 5 = **stand** (0–7):
+`data2` byte 4 = **modus**, byte 5 = **stand** (0–10):
 
 | Modus | Betekenis |
 |-------|-----------|
@@ -82,7 +82,7 @@ zenden en álle lange frames sloopt. Je herkent dat probleem aan `0x19`-bytes
 
 ## Regeling
 
-Bewust simpel: **"geef me X°C aanvoer" → de controller kiest zelf stand 0–7**,
+Bewust simpel: **"geef me X°C aanvoer" → de controller kiest zelf de stand**,
 op basis van de aanvoerfout én de **delta-T** (aanvoer − retour).
 
 | Aanvoer t.o.v. setpoint | Delta-T | Actie |
@@ -118,7 +118,7 @@ Overige parameters (`dt_low`, `dt_high`, `max_stand`, `setpoint_min/max`,
 |----------|------|---------|
 | Setpoint aanvoer | number 6,5–60 °C | primaire knop — gewenste aanvoertemperatuur |
 | Modus | select | auto (regeling) / handmatig |
-| Handmatige stand | number 0–7 | directe stand in modus handmatig |
+| Handmatige stand | number 0–10 | directe stand in modus handmatig |
 | Stap-interval | number 10–600 s | hoe snel de regeling van stand mag wisselen |
 | Systeem | switch | master aan/uit |
 | Koelen | switch | koelbedrijf i.p.v. verwarmen (uit na reboot) |

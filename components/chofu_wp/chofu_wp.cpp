@@ -342,7 +342,15 @@ void ChofuWP::set_auto_mode(bool a) {
   ESP_LOGI(TAG, "Modus: %s", a ? "auto" : "handmatig");
 }
 
-void ChofuWP::set_manual_stand(int s) { manual_stand_ = clamp(s, 0, (int) max_stand_); }
+void ChofuWP::set_manual_stand(int s) {
+  manual_stand_ = clamp(s, 0, (int) max_stand_);
+  // Zonder deze melding is een te hoog gevraagde stand onzichtbaar: de slider
+  // laat 'm toe, de code knipt 'm af en de WP rapporteert netjes de lagere
+  // stand terug - wat makkelijk te lezen is als "de unit kan niet hoger".
+  if (s != (int) manual_stand_)
+    ESP_LOGW(TAG, "Stand %d gevraagd maar begrensd op %u (max_stand). Verhoog max_stand in de YAML.",
+             s, manual_stand_);
+}
 
 }  // namespace chofu_wp
 }  // namespace esphome
