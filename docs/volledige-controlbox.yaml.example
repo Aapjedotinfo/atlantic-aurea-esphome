@@ -1,0 +1,112 @@
+# ══════════════════════════════════════════════════════════════════
+#  VOORBEELD - niet flashen zonder de stappen uit volledige-controlbox.md
+#
+#  De ESP32-kant van de volledige controlbox: warmtepomp op 666 baud
+#  (IC1-socket) plus de parameterlink naar de eigen ATmega328P in de
+#  IC2-socket, die de twee OpenTherm-kanten doet.
+#
+#  De ESP32 voert hier GEEN OpenTherm. Hij stuurt alleen parameters:
+#  "ketel op X graden", "vertel Anna dat de aanvoer Y is", en leest
+#  terug wat Anna vraagt en wat de ketel meldt.
+#
+#  [WERKT]   - draait vandaag al, ongewijzigd
+#  [TE DOEN] - de parameterlink, zodra de AVR-firmware er is
+# ══════════════════════════════════════════════════════════════════
+
+substitutions:
+  name: "aurea-wp"
+  friendly_name: Aurea Warmtepomp
+
+  # ── Pinout, afgeleid uit de originele firmware ──
+  # Zie volledige-controlbox.md voor de onderbouwing per pin.
+  pin_wp_tx:    GPIO17   # -> IC1-socket pin 26 (was PC3)
+  pin_wp_rx:    GPIO16   # <- IC1-socket pin 27 (was PC4)
+  pin_avr_tx:   GPIO18   # -> IC1-socket pin 3  (was PD1), rechtstreeks
+  pin_avr_rx:   GPIO19   # <- IC1-socket pin 2  (was PD0), via 4k7+10k deler
+
+esphome:
+  name: ${name}
+  friendly_name: ${friendly_name}
+
+esp32:
+  board: mhetesp32minikit
+  framework:
+    type: arduino
+
+external_components:
+  - source:
+      type: git
+      url: https://github.com/Aapjedotinfo/atlantic-aurea-esphome
+      ref: main
+    components: [chofu_wp]
+
+# ──────────────────────────────────────────────────────────────────
+# [WERKT] Warmtepomp - 666 baud via de IC1-socket
+# ──────────────────────────────────────────────────────────────────
+uart:
+  - id: wp_uart
+    rx_pin: ${pin_wp_rx}
+    tx_pin: ${pin_wp_tx}
+    baud_rate: 666
+
+  # [TE DOEN] Parameterlink naar de eigen T1.1. De sporen tussen IC1 en
+  # IC2 liggen al op de print, dus dit kost geen extra bedrading.
+  - id: avr_uart
+    rx_pin: ${pin_avr_rx}
+    tx_pin: ${pin_avr_tx}
+    baud_rate: 9600
+
+chofu_wp:
+  id: wp
+  uart_id: wp_uart
+  update_interval: 5s
+  max_stand: 10
+
+# ──────────────────────────────────────────────────────────────────
+# [TE DOEN] De parameterlink zelf.
+#
+# Twee berichten met vaste indeling, framing van Atlantic overgenomen
+# (startbyte, databytes, 8-bits optelsom). Zie volledige-controlbox.md
+# voor de byte-indeling.
+#
+#   ESP32 -> AVR : 0xF1, vlaggen, ketel-setpoint, max modulatie,
+#                  aanvoer- en retourtemperatuur die Anna moet zien
+#   AVR -> ESP32 : 0xF0, vlaggen, door Anna gevraagde setpoint,
+#                  kamertemperatuur, room setpoint, keteltemperatuur,
+#                  modulatie, storingscode
+#
+# Dit wordt een eigen component (bijv. `aurea_link`) die op avr_uart
+# hangt. Bouw 'm pas nadat stap 2 uit het gefaseerde plan werkt: eerst
+# bewijzen dat de koppeling staat met verzonnen waarden.
+#
+# BELANGRIJK: de AVR moet zelf terugvallen op "geef Anna's vraag
+# ongewijzigd door aan de ketel" als er 60 s geen bericht binnenkomt.
+# Dat gedrag hoort in de AVR-firmware, niet hier - juist omdat het moet
+# werken wanneer deze ESP32 er niet is.
+# ──────────────────────────────────────────────────────────────────
+
+logger:
+
+api:
+  encryption:
+    key: !secret api_encryption
+
+ota:
+  platform: esphome
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+  ap:
+    ssid: "${friendly_name}_Hotspot"
+    password: !secret fallback_password
+
+web_server:
+  port: 80
+
+status_led:
+  pin:
+    number: GPIO2
+
+# Vanaf hier is alles identiek aan aurea-wp.yaml (sensoren, knoppen,
+# schakelaars). Neem dat blok over zodra de parameterlink werkt.

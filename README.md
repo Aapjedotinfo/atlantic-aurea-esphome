@@ -1,31 +1,131 @@
-# Aurea WP — ESP32/ESPHome-controller voor de Atlantic Aurea
+# Aurea WP — de complete controlbox van de Atlantic Aurea vervangen
 
 Alternatieve besturing voor de **Atlantic Aurea 5 Hybrid** warmtepomp (een
-kostenbespaarde **Chofu AEYC-0643XU**). Een ESP32 vervangt de linker
-microcontroller in de controlbox en praat rechtstreeks met de buitenunit op het
-eigen 666-baud protocol. Je zegt vanuit **Home Assistant** simpelweg *"geef me X°C
-aanvoer"* — de controller kiest zelf de stand (0–10, default max 7). De CV-ketel stuur je los aan.
+kostenbespaarde **Chofu AEYC-0643XU**). In de controlbox zitten twee ATmega8's in
+een DIP28-voet. **Dit project vervangt ze allebei**:
 
-**Werkt** — bidirectionele communicatie is live geverifieerd op echte hardware:
-alle telegrammen CRC-geldig, temperaturen/vermogen/compressor uitgelezen én de
-buitenunit reageert op de gestuurde stand.
+| Voet | Origineel | Wordt | Doet |
+|---|---|---|---|
+| **IC1** | Haddon M1.1 | **ESP32** (MH-ET MiniKit) | praat op 666 baud met de buitenunit, draait de regeling, praat met Home Assistant |
+| **IC2** | Haddon T1.1 | **ATmega328P** met eigen firmware | geeft het OpenTherm-gesprek tussen thermostaat en CV-ketel door, en mag onderweg ingrijpen |
+
+Je zegt vanuit Home Assistant *"geef me X °C aanvoer"* en de controller kiest zelf
+de stand. De CV-ketel hoeft daarnaast niet meer los aangestuurd te worden: de
+brug in IC2 zit tussen je thermostaat en je ketel in, dus je kunt de ketel
+**afremmen** zolang de warmtepomp het alleen aankan — zonder de thermostaat te
+misleiden en zonder draden te verleggen.
+
+**Status: werkend op echte hardware.** Beide kanten van de OpenTherm-brug
+decoderen frames zonder pariteitsfouten, met een echte thermostaat aan de ene
+kant en een CV-ketel aan de andere. De warmtepompkant draait al langer: alle
+telegrammen CRC-geldig, en de buitenunit reageert op de gestuurde stand.
 
 ![De controlbox met de ESP32 op de plek van de originele microcontroller](docs/controlbox-esp32.jpg)
 
-*De omgebouwde controlbox. De ESP32 (blauw, met brandende status-LED) zit op de
-plek van de linker ATmega en praat rechtstreeks met de buitenunit; de socket van
-de rechter ATmega — die de OpenTherm-communicatie deed — blijft leeg. Voeding
-gaat via USB, zodat de print zelf niets extra hoeft te leveren.*
+---
+
+## Wat je nodig hebt
+
+### Voor IC1 — de warmtepompkant
+
+Een **ESP32**; ontwikkeld op een MH-ET LIVE MiniKit, maar elk ESP32-bord met de
+juiste pinnen vrij werkt. Zie [WIRING.md](WIRING.md).
+
+### Voor IC2 — de OpenTherm-brug
+
+Een **ATmega328P-PU in DIP-28**. Dat is dezelfde behuizing als de originele
+ATmega8, dus hij past rechtstreeks in de bestaande voet.
+
+> **Waarom een 328P en niet weer een ATmega8?** Dezelfde pinout, dezelfde
+> registers, maar viermaal zoveel flash en tweemaal zoveel RAM. Er is geen enkele
+> reden om jezelf op 8 kB vast te zetten. De firmware gebruikt nu 6,1 kB — dat
+> past nog net in een ATmega8, maar dan is er geen ruimte meer om iets toe te
+> voegen.
+
+Wat je verder nodig hebt:
+
+- Een **programmer** die losse chips kan branden — een TL866-II (Xgpro) doet dit
+  prima. Er komt geen ISP-kabel en geen bootloader aan te pas: je brandt de chip
+  in de ZIF-voet van de programmer en drukt hem daarna in de controlbox.
+- **Geen kristal.** Onder de IC2-voet zit er al een van 8 MHz, gewoon op de
+  print. De firmware is daarop gebouwd.
+
+**De kant-en-klare hex staat in deze repo**, dus je hoeft geen Arduino-toolchain
+te installeren:
+
+```
+firmware/avr-bridge/avr-bridge.hex
+```
+
+Fuses erbij (zie [firmware/README.md](firmware/README.md) voor de uitleg):
+
+| Fuse | Waarde | Betekenis |
+|---|---|---|
+| lfuse | `0xFF` | extern kristal 8–16 MHz |
+| hfuse | `0xD9` | geen bootloader, EESAVE uit |
+| efuse | `0xFD` | brown-out op 2,7 V |
+
+> Laat **RSTDISBL** en **DWEN** met rust. Die maken van de resetpin een gewone
+> I/O-pin, en dan komt een normale programmer er niet meer bij.
+
+Wil je eerst op het bureau testen, zonder kristal? Zet `lfuse` dan op `0xE2`
+(interne RC, 8 MHz). Dezelfde hex werkt in beide gevallen — de klokbron is een
+fuse, geen compileeroptie.
+
+### Verbinding tussen de twee
+
+Geen. De sporen tussen de IC1- en IC2-voet liggen al op de print, gekruist, en
+dat is precies wat je nodig hebt: GPIO18/19 van de ESP32 op IC1-pin 3 en 2,
+9600 baud. Eén weerstandsdeler aan de RX-kant, verder niets.
+
+---
+
+## Wat de brug in IC2 doet
+
+Hij zit **tussen** de thermostaat en de ketel en geeft het OpenTherm-gesprek
+letterlijk door, met een paar uitzonderingen die je vanuit Home Assistant
+bedient:
+
+- **De rem.** Aan = de ketel krijgt een setpoint van 10 °C opgelegd en houdt zich
+  koest, terwijl de thermostaat gewoon zijn eigen gesprek blijft voeren. De ketel
+  wordt dus nooit "uitgezet": tapwater, storingen en diagnostiek blijven werken.
+  De AVR houdt zelf een minimale aan- en uittijd van vijf minuten aan zodat er
+  niets gaat pendelen.
+- **Zelf antwoorden.** Praat de ketel niet mee (of zet je hem bewust buitenspel),
+  dan beantwoordt de brug de thermostaat zelf, met de warmtepomp als warmtebron.
+- **Temperatuursubstitutie.** De thermostaat de aanvoer/retour van de wármtepomp
+  laten zien in plaats van die van de ketel — alleen nodig als de ketelpomp niet
+  meedraait en de ketel dus stilstaand koud water meet.
+
+En wat er gebeurt als het misgaat:
+
+**Valt de ESP32 weg, dan trekt de AVR zelf de noodbrug aan.** Op de print zitten
+twee relais (K1 en K2) die het complete aderpaar van de thermostaat rechtstreeks
+naar de ketel verleggen. Dat is Atlantic's eigen voorziening, en die zit nu in
+firmware — dus hij werkt ook als Home Assistant, het netwerk of de ESP32 eruit
+ligt. Het huis blijft warm.
+
+De volledige reverse-engineering van beide originele chips staat in een apart
+verslag: **[aapje.info/downloads/atlantic](https://aapje.info/downloads/atlantic/)**.
+Daar vind je de instructie-voor-instructie analyse van de firmware, en
+[de print pin voor pin doorgemeten](https://aapje.info/downloads/atlantic/#print)
+— de socket-pinout, de relaistopologie en de twee OpenTherm-interfaces, die
+anders dan je zou verwachten niet symmetrisch gebouwd zijn.
+
+---
 
 ## Herkomst van het protocol
 
-Het protocol is niet openbaar; het is gereverse-engineerd door de forumgebruikers
-**WackoH** en **_JGC_** in het Tweakers-topic *"Aurea 5 hybrid: interfaces met de
-buitenunit en thermostaat"*. De protocol-laag hier is geport uit JGC's werkende
-ATmega2560-sketch (v0.1Beta, 19-03-2025). Alle credits voor het uitpluizen gaan
-naar hen; dit project giet het in een ESPHome-component met een simpele regeling.
+Het warmtepompprotocol is niet openbaar; het is gereverse-engineerd door de
+forumgebruikers **WackoH** en **_JGC_** in het Tweakers-topic *"Aurea 5 hybrid:
+interfaces met de buitenunit en thermostaat"*. De protocol-laag hier is geport
+uit JGC's werkende ATmega2560-sketch (v0.1Beta, 19-03-2025). Alle credits voor
+het uitpluizen gaan naar hen.
 
-## Het protocol
+De OpenTherm-kant is daarnaast rechtstreeks uit de originele T1.1-firmware
+gehaald, met een zelfgeschreven AVR-disassembler.
+
+## Het warmtepompprotocol
 
 | Aspect | Waarde |
 |--------|--------|
@@ -112,23 +212,36 @@ gasketel — geen hardwarelimiet.
 Overige parameters (`dt_low`, `dt_high`, `max_stand`, `setpoint_min/max`,
 `cooling_min_supply`) staan als opties in `aurea-wp.yaml` onder `chofu_wp:`.
 
-### Entiteiten in Home Assistant / web-GUI
+**Na een herstart staat het systeem uit.** Een ESP32 die om wat voor reden dan
+ook opnieuw opkomt hoort niet ongevraagd de compressor te starten; aanzetten is
+een bewuste handeling. De OpenTherm-brug blijft ondertussen gewoon doorgeven, dus
+je CV valt daar niet mee stil.
 
-| Entiteit | Type | Functie |
-|----------|------|---------|
-| Setpoint aanvoer | number 6,5–60 °C | primaire knop — gewenste aanvoertemperatuur |
-| Modus | select | auto (regeling) / handmatig |
-| Handmatige stand | number 0–10 | directe stand in modus handmatig |
-| Stap-interval | number 10–600 s | hoe snel de regeling van stand mag wisselen |
-| Systeem | switch | master aan/uit |
-| Koelen | switch | koelbedrijf i.p.v. verwarmen (uit na reboot) |
-| Debug frames | switch | ruwe FRAME-hexlog aan/uit (standaard uit) |
-| Aanvoer / Retour / Buiten / Delta T | sensor | temperaturen |
-| Vermogen | sensor (W) | echt vermogen uit de WP |
-| Compressor / Stand | sensor | draaisnelheid WP / door ons gestuurde stand |
-| Actief / Communicatie | binary_sensor | status |
+## Entiteiten
 
-Fail-safe: >60 s zonder geldig telegram → terug naar stand 0.
+De webinterface draait op **web_server versie 3** en groepeert alles; in Home
+Assistant zie je dezelfde namen.
+
+| Groep | Wat erin zit |
+|---|---|
+| **Warmtepomp** | Setpoint aanvoer, Modus, Systeem, Handmatige stand, Aanvoer, Retour, Delta T, Buiten, Stand, Vermogen, Compressor, Actief |
+| **Thermostaat** | Kamertemperatuur, Gewenste kamertemperatuur, Warmtevraag, Tapwatervraag, Thermostaat op afstand, Verbonden |
+| **CV-ketel** | Keteltemperatuur, Ketelmodulatie, Gevraagd ketelsetpoint, CV actief, Tapwater actief, Vlam, Ketelstoring, Verbonden, Ketel setpoint (rechtstreeks) |
+| **Bijstookbeleid** | Ketel remmen, Rem actief, Rem-setpoint, Ketel overslaan, Meld warmtelevering, WP-temperaturen tonen |
+| **Instellingen** | Koelen, Stap-interval, Statuslampje, Ketelvraag-relais vrijgeven |
+| **Diagnose** | Brug verbonden, Brug herstarts, Brug gemiste berichten, Communicatie, Noodbrug aangetrokken, Ketelvraag-relais K3, Dipswitch keteltype, Debug frames |
+| **Apparaat** | Restart, Uptime, WiFi Signal |
+
+Twee dingen om te weten over **Diagnose**:
+
+*Brug verbonden* is je enige venster op de chip in IC2 — daar zit geen seriële
+monitor en geen LED op. Valt hij weg, dan valt de brug terug op ongewijzigd
+doorgeven en blijft je huis warm, maar dan weet je het tenminste. *Brug
+herstarts* en *Brug gemiste berichten* vangen de twee manieren waarop dat sluipend
+kan gebeuren: een resetlus in de AVR, en een verslechterende seriële link.
+
+Fail-safe aan de warmtepompkant: >60 s zonder geldig telegram → terug naar
+stand 0.
 
 ## Structuur
 
@@ -137,22 +250,23 @@ aurea-wp-666/
 ├── aurea-wp.yaml           device-config (entities, wifi, ota)
 ├── secrets.yaml.example    kopieer naar secrets.yaml en vul in
 ├── WIRING.md               bedrading + ASCII-schema
-├── README.md
-└── components/
-    └── chofu_wp/
-        ├── __init__.py     protocol- + regelparameters
-        ├── chofu_wp.h
-        └── chofu_wp.cpp    protocol + simpele regeling
+├── components/
+│   ├── chofu_wp/           666-baud protocol + regeling (warmtepomp)
+│   └── aurea_link/         9600-baud link naar de brug in IC2
+├── firmware/
+│   └── avr-bridge/         de OpenTherm-brug: bron + kant-en-klare .hex
+└── docs/
+    ├── volledige-controlbox.md   het ontwerp van de tweechip-opzet
+    ├── print-doormeten.md        werklijst voor de meter
+    └── meetresultaten-ic2.md     wat er daadwerkelijk gemeten is
 ```
 
 ## Aan de slag
 
-**Bedrading eerst:** zie [WIRING.md](WIRING.md). Kort: ESP32 in de IC1-socket,
-GPIO17→pin 26 (TX), pin 27→GPIO16 (RX, met 10k naar GND), 5V/GND. Geen
-levelshifter nodig — de optocouplers doen de scheiding al.
+**Bedrading eerst:** zie [WIRING.md](WIRING.md).
 
-Daarna kun je twee kanten op. Kies er één als thuisbasis: beide kunnen OTA
-flashen, maar ze weten niets van elkaars wijzigingen.
+Daarna kun je twee kanten op voor de ESP32. Kies er één als thuisbasis: beide
+kunnen OTA flashen, maar ze weten niets van elkaars wijzigingen.
 
 ### A. Vanaf je eigen machine
 
@@ -165,8 +279,8 @@ esphome run aurea-wp.yaml              # eerste keer via USB, daarna OTA
 
 ### B. In de Home Assistant ESPHome Device Builder
 
-Je hoeft geen bestanden te kopiëren: het `chofu_wp`-component wordt
-rechtstreeks uit deze repo gehaald, dus alles kan in de webinterface.
+Je hoeft geen bestanden te kopiëren: de componenten worden rechtstreeks uit deze
+repo gehaald, dus alles kan in de webinterface.
 
 1. **+ NEW DEVICE** → naam `aurea-wp` → ESP32 → *Skip* bij het installeren.
 2. Klik **EDIT** en vervang de gegenereerde inhoud door die van
@@ -187,7 +301,7 @@ rechtstreeks uit deze repo gehaald, dus alles kan in de webinterface.
          type: git
          url: https://github.com/Aapjedotinfo/atlantic-aurea-esphome
          ref: main
-       components: [chofu_wp]
+       components: [chofu_wp, aurea_link]
    ```
 
 3. Menu rechtsboven → **Secrets** → `wifi_ssid`, `wifi_password`,
@@ -198,14 +312,15 @@ rechtstreeks uit deze repo gehaald, dus alles kan in de webinterface.
 > houd `name: aurea-wp` gelijk. Met een nieuwe sleutel verliest Home Assistant
 > de verbinding, en met een andere naam krijg je er een tweede device bij.
 
-> ESPHome cachet git-bronnen. Update je later `chofu_wp` in deze repo, zet dan
+> ESPHome cachet git-bronnen. Update je later een component in deze repo, zet dan
 > tijdelijk `refresh: 0s` in het `source`-blok — anders bouwt hij door op de
 > oude kopie.
 
 Liever tóch lokale bestanden in de addon? Zet dan `aurea-wp.yaml` in
-`/config/esphome/` en de hele map `components/chofu_wp/` in
-`/config/esphome/components/`; het `external_components`-blok blijft dan
-ongewijzigd, want `path: components` is relatief aan de yaml.
+`/config/esphome/` en de mappen `components/chofu_wp/` en
+`components/aurea_link/` in `/config/esphome/components/`; het
+`external_components`-blok blijft dan ongewijzigd, want `path: components` is
+relatief aan de yaml.
 
 ## Diagnose
 
@@ -230,7 +345,13 @@ Het protocol is reverse-engineered en kan per model/firmware verschillen.
 dauwpunt gaan leidingen en radiatoren **condenseren** — met kans op waterschade.
 Houd het setpoint hoog genoeg (vuistregel: boven ~17 °C) of isoleer je leidingen.
 
+**De dipswitches op de print.** Dip 2 zit op socket-pin 25 (PC2) en bepaalt het
+keteltype: **ON = normaal OpenTherm-bedrijf.** Staat hij op OFF, dan knijpt de
+originele logica de hele ketelkant af — en dat kost je een avond zoeken naar een
+firmwarefout die er niet is.
+
 ## Credits
 
-- **WackoH** en **_JGC_** (Tweakers) — reverse-engineering van het protocol.
-- Regeling, ESPHome-component en documentatie: dit project.
+- **WackoH** en **_JGC_** (Tweakers) — reverse-engineering van het
+  warmtepompprotocol.
+- Regeling, ESPHome-componenten, de AVR-brug en de documentatie: dit project.

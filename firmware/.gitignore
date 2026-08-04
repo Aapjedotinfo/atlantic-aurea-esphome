@@ -1,0 +1,6 @@
+# Bouwresultaat van de AVR-firmware, met een uitzondering: de hex van de brug
+# staat er bewust wel in. Zo kun je de chip branden zonder eerst een
+# Arduino-toolchain te installeren.
+*.hex
+*.elf
+!avr-bridge/avr-bridge.hex

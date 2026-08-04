@@ -113,7 +113,10 @@ class ChofuWP : public PollingComponent, public uart::UARTDevice {
   // trappen niet op en is de rest tabelvulling voor een groter model.
   uint8_t max_stand_{7};
   uint32_t step_interval_ms_{120000};
-  bool system_on_{true};
+  // Uit tot de schakelaar in de YAML iets anders zegt. Er zit een gat tussen
+  // het opstarten van dit component en het herstellen van die schakelaar; in
+  // dat gat hoort de warmtepomp stil te staan, niet te draaien.
+  bool system_on_{false};
   bool auto_mode_{true};
   bool cooling_{false};  // false = verwarmen, true = koelen (experimenteel)
   uint8_t manual_stand_{1};

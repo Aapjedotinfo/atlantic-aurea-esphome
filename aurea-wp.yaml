@@ -24,10 +24,28 @@ external_components:
 #  TX (GPIO17) -> pin 26 (naar WP), rechtstreeks op de driver-trap.
 # ─────────────────────────────────────────────────────────────────
 uart:
-  id: wp_uart
-  rx_pin: GPIO16
-  tx_pin: GPIO17
-  baud_rate: 666
+  - id: wp_uart
+    rx_pin: GPIO16
+    tx_pin: GPIO17
+    baud_rate: 666
+
+  # ───────────────────────────────────────────────────────────────
+  #  Parameterlink naar de eigen ATmega328P in de IC2-socket, die het
+  #  OpenTherm-gesprek tussen thermostaat en CV-ketel doorgeeft.
+  #
+  #  De sporen tussen IC1 en IC2 liggen al op de print, dus dit kost
+  #  geen extra bedrading:
+  #    GPIO19 <- IC1-socket pin 2, via 4k7 in serie + 10k naar GND
+  #    GPIO18 -> IC1-socket pin 3, rechtstreeks
+  #
+  #  9600 baud: het origineel zette UBRR = 103 met U2X, oftewel 9615
+  #  baud bij 8 MHz. Het zendt met 2 stopbits, maar een ontvanger kijkt
+  #  alleen naar de eerste, dus 8N1 volstaat hier.
+  # ───────────────────────────────────────────────────────────────
+  - id: avr_uart
+    rx_pin: GPIO19
+    tx_pin: GPIO18
+    baud_rate: 9600
 
 chofu_wp:
   id: wp
@@ -40,6 +58,27 @@ chofu_wp:
                         # ONBEWEZEN voor elke buitenunit - verhoog stapsgewijs
                         # en kijk of "Vermogen" en "Toerental" meestijgen.
   # step_interval: 120s  # max ±1 stand per 2 min (niet volgas)
+
+# De brug naar de thermostaat en de CV-ketel. Alle regellogica zit hier;
+# de AVR kent alleen de twee substituties en zijn terugvalgedrag.
+aurea_link:
+  id: otlink
+  uart_id: avr_uart
+  update_interval: 2s
+  brake_setpoint: 10   # wat de rem de ketel oplegt; ook Atlantic's waarde
+
+# De warmtepomptemperaturen doorgeven zodat de AVR ze aan de thermostaat kan
+# tonen wanneer de ketel koud staat. Alleen zinvol als de ketel het opgewarmde
+# water niet zelf al meet - zie docs/volledige-controlbox.md.
+interval:
+  - interval: 5s
+    then:
+      - lambda: |-
+          id(otlink)->set_wp_temps(id(wp)->get_supply(), id(wp)->get_return());
+          // De stand van de warmtepomp als modulatiepercentage doorgeven, zodat
+          // de thermostaat in de zelfstandige stand ziet hoe hard er gewerkt
+          // wordt in plaats van een vlakke nul.
+          id(otlink)->set_standalone_modulation(id(wp)->get_stand() * 10.0f);
 
 logger:
 
@@ -57,8 +96,35 @@ wifi:
     ssid: "${friendly_name}_Hotspot"
     password: !secret fallback_password
 
+# web_server versie 3 is de enige versie die entiteiten kan groeperen. Zonder
+# groepen staan vijftig velden plat onder elkaar en is de pagina onbruikbaar.
+# De groep vertelt waar iets bij hoort, dus de namen hoeven dat niet meer te
+# doen - vandaar "Aanvoer" en niet "Temp warmtepomp aanvoer".
 web_server:
   port: 80
+  version: 3
+  sorting_groups:
+    - id: grp_wp
+      name: "Warmtepomp"
+      sorting_weight: 10
+    - id: grp_thermostaat
+      name: "Thermostaat"
+      sorting_weight: 20
+    - id: grp_ketel
+      name: "CV-ketel"
+      sorting_weight: 30
+    - id: grp_beleid
+      name: "Bijstookbeleid"
+      sorting_weight: 40
+    - id: grp_instellingen
+      name: "Instellingen"
+      sorting_weight: 50
+    - id: grp_diag
+      name: "Diagnose"
+      sorting_weight: 60
+    - id: grp_systeem
+      name: "Apparaat"
+      sorting_weight: 70
 
 time:
   - platform: homeassistant
@@ -95,6 +161,9 @@ number:
     on_value:
       then:
         - lambda: 'id(wp)->set_setpoint(x);'
+    web_server:
+      sorting_group_id: grp_wp
+      sorting_weight: 1
 
   # Handmatige override: zet zelf de stand (werkt alleen in modus "handmatig").
   - platform: template
@@ -110,6 +179,9 @@ number:
     on_value:
       then:
         - lambda: 'id(wp)->set_manual_stand((int) x);'
+    web_server:
+      sorting_group_id: grp_wp
+      sorting_weight: 4
 
   # Hoe snel de regeling mag bijsturen: maximaal ±1 stand per interval.
   # Lang (120s) = rustig, compressorvriendelijk bij verwarmen.
@@ -130,8 +202,107 @@ number:
     on_value:
       then:
         - lambda: 'id(wp)->set_step_interval((uint32_t) (x * 1000));'
+    web_server:
+      sorting_group_id: grp_instellingen
+      sorting_weight: 2
+
+  # Wat de rem de ketel oplegt. 10 °C houdt hem koud - dat is de waarde die
+  # Atlantic zelf ook schreef. Hoger zetten laat hem gedeeltelijk meestoken.
+  - platform: template
+    name: "Rem-setpoint ketel"
+    id: n_brake_setpoint
+    min_value: 0
+    max_value: 80
+    step: 1
+    initial_value: 10
+    optimistic: true
+    restore_value: true
+    unit_of_measurement: "°C"
+    mode: box
+    icon: mdi:water-boiler-off
+    entity_category: config
+    on_value:
+      then:
+        - lambda: 'id(otlink)->set_brake_setpoint(x);'
+    web_server:
+      sorting_group_id: grp_beleid
+      sorting_weight: 3
+
+  # DE THERMOSTAAT OP AFSTAND ZETTEN.
+  # Data-ID 9 gaat van slave naar master, dus de brug kan de thermostaat een
+  # kamersetpoint opdringen - precies zoals de bekende OpenTherm-gateway doet.
+  # Dat werkt ongeacht welk merk er hangt, dus je hebt er geen Plugwise- of
+  # merkintegratie voor nodig.
+  #
+  # Op 0 zetten heft de override op en laat de thermostaat weer zelf regelen.
+  # DE KETEL RECHTSTREEKS AANSTUREN, zonder thermostaat ertussen.
+  # De brug is dan zelf de OpenTherm-master: hij schrijft dit setpoint naar
+  # Data-ID 1 en zet de CV-vlag in Data-ID 0.
+  #
+  # Werkt alleen zolang er geen thermostaat meepraat - die heeft altijd
+  # voorrang, want doorgeven gaat voor verzinnen. Op 0 zetten is uit.
+  - platform: template
+    name: "Ketel setpoint (rechtstreeks)"
+    id: n_boiler_setpoint
+    min_value: 0
+    max_value: 80
+    step: 1
+    initial_value: 0
+    optimistic: true
+    restore_value: true
+    unit_of_measurement: "C"
+    mode: box
+    icon: mdi:water-boiler
+    on_value:
+      then:
+        - lambda: 'id(otlink)->set_boiler_setpoint(x);'
+    web_server:
+      sorting_group_id: grp_ketel
+      sorting_weight: 9
+
+  - platform: template
+    name: "Thermostaat op afstand"
+    id: n_override
+    min_value: 0
+    max_value: 30
+    step: 0.5
+    initial_value: 0
+    optimistic: true
+    restore_value: true
+    unit_of_measurement: "C"
+    mode: box
+    icon: mdi:thermostat-box
+    on_value:
+      then:
+        - lambda: 'id(otlink)->set_override_setpoint(x);'
+    web_server:
+      sorting_group_id: grp_thermostaat
+      sorting_weight: 5
 
 select:
+  # Het statuslampje op de voorkant. Automatisch is de nuttigste stand: uit als
+  # alles klopt, snel knipperen zonder thermostaat, traag zonder ESP32, vast aan
+  # bij een ketelstoring. De rest is handig om te kijken welke LED het is.
+  - platform: template
+    name: "Statuslampje"
+    options: ["automatisch", "uit", "aan", "traag knipperen", "snel knipperen"]
+    initial_option: "automatisch"
+    optimistic: true
+    entity_category: config
+    icon: mdi:lightbulb-on-outline
+    on_value:
+      then:
+        - lambda: |-
+            int m = 0;
+            if      (x == "uit")             m = 1;
+            else if (x == "aan")             m = 2;
+            else if (x == "traag knipperen") m = 3;
+            else if (x == "snel knipperen")  m = 4;
+            id(otlink)->set_lamp_mode(m);
+    web_server:
+      sorting_group_id: grp_instellingen
+      sorting_weight: 3
+
   - platform: template
     name: "Modus"
     options: ["auto", "handmatig"]
@@ -141,18 +312,26 @@ select:
     on_value:
       then:
         - lambda: 'id(wp)->set_auto_mode(x == "auto");'
+    web_server:
+      sorting_group_id: grp_wp
+      sorting_weight: 2
 
 switch:
-  # Master aan/uit. Niet persistent: na reboot staat het systeem altijd aan.
+  # Master aan/uit. Niet persistent: na een herstart staat het systeem altijd
+  # UIT. Een ESP32 die om wat voor reden dan ook opnieuw opkomt hoort niet
+  # ongevraagd de compressor te starten - aanzetten is een bewuste handeling.
   - platform: template
     name: "Systeem"
     optimistic: true
-    restore_mode: ALWAYS_ON
+    restore_mode: ALWAYS_OFF
     icon: mdi:power
     turn_on_action:
       - lambda: 'id(wp)->set_system_on(true);'
     turn_off_action:
       - lambda: 'id(wp)->set_system_on(false);'
+    web_server:
+      sorting_group_id: grp_wp
+      sorting_weight: 3
 
   # EXPERIMENTEEL: koelbedrijf (data2 byte 4 = 0x02 i.p.v. 0x01). Komt uit één
   # forumpost en is niet geverifieerd - mogelijk negeert de WP het gewoon.
@@ -168,6 +347,9 @@ switch:
       - lambda: 'id(wp)->set_cooling(true);'
     turn_off_action:
       - lambda: 'id(wp)->set_cooling(false);'
+    web_server:
+      sorting_group_id: grp_instellingen
+      sorting_weight: 1
 
   # Diagnose: zet de ruwe FRAME-hexlog aan/uit (standaard uit). Handig bij
   # sleutelen aan de bekabeling; laat 'm normaal uit voor een schone log.
@@ -181,10 +363,178 @@ switch:
       - lambda: 'id(wp)->set_raw_debug(true);'
     turn_off_action:
       - lambda: 'id(wp)->set_raw_debug(false);'
+    web_server:
+      sorting_group_id: grp_diag
+      sorting_weight: 8
+
+  # ── De brug naar thermostaat en ketel ──
+
+  # Wat de brug de thermostaat vertelt zolang er geen ketel meepraat. De vlam-
+  # vlag staat hier voor "de warmtepomp levert daadwerkelijk" - alleen de ESP32
+  # weet of de compressor draait, dus die bepaalt het.
+  - platform: template
+    name: "Meld warmtelevering aan thermostaat"
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_ON
+    entity_category: config
+    icon: mdi:heat-wave
+    turn_on_action:
+      - lambda: 'id(otlink)->set_standalone_flame(true);'
+    turn_off_action:
+      - lambda: 'id(otlink)->set_standalone_flame(false);'
+    web_server:
+      sorting_group_id: grp_beleid
+      sorting_weight: 5
+
+  # Zelf antwoorden ook als de ketel wel meepraat. Handig om de ketel volledig
+  # buiten spel te zetten zonder draden los te trekken.
+  - platform: template
+    name: "Ketel overslaan"
+    optimistic: true
+    restore_mode: ALWAYS_OFF
+    entity_category: config
+    icon: mdi:debug-step-over
+    turn_on_action:
+      - lambda: 'id(otlink)->set_force_standalone(true);'
+    turn_off_action:
+      - lambda: 'id(otlink)->set_force_standalone(false);'
+    web_server:
+      sorting_group_id: grp_beleid
+      sorting_weight: 4
+
+  # DE REM. Aan = de ketel krijgt een setpoint van 10 °C opgelegd en houdt
+  # zich koest; uit = de vraag van de thermostaat gaat ongewijzigd door.
+  # De ketel wordt dus nooit "uitgezet", je zegt alleen dat hij niets hoeft
+  # te leveren - tapwater, storingen en diagnostiek blijven gewoon werken.
+  #
+  # De AVR houdt zelf een minimale aan- en uittijd van 5 minuten aan, zodat
+  # de ketel niet gaat pendelen als het beleid hapert.
+  - platform: template
+    name: "Ketel remmen"
+    id: sw_brake
+    optimistic: true
+    restore_mode: ALWAYS_OFF
+    icon: mdi:hand-back-left
+    turn_on_action:
+      - lambda: 'id(otlink)->set_brake(true);'
+    turn_off_action:
+      - lambda: 'id(otlink)->set_brake(false);'
+    web_server:
+      sorting_group_id: grp_beleid
+      sorting_weight: 1
+
+  # Toon de thermostaat de aanvoer/retour van de WARMTEPOMP in plaats van die
+  # van de ketel. Alleen nodig als de ketelpomp niet meedraait en de ketel dus
+  # stilstaand koud water meet. Meet dat eerst - zie de documentatie.
+  - platform: template
+    name: "WP-temperaturen aan thermostaat tonen"
+    optimistic: true
+    restore_mode: ALWAYS_OFF
+    entity_category: config
+    icon: mdi:swap-horizontal
+    turn_on_action:
+      - lambda: 'id(otlink)->set_subst_temp(true);'
+    turn_off_action:
+      - lambda: 'id(otlink)->set_subst_temp(false);'
+    web_server:
+      sorting_group_id: grp_beleid
+      sorting_weight: 6
+
+  # ── Onbekende uitgangen: uitgeschakeld ──
+  #
+  # Het origineel stelt vijf pinnen in als uitgang en houdt ze permanent laag,
+  # zonder ze ooit te schrijven. Pin 4 (PD2), 14 (PB0) en 15 (PB1) zijn
+  # doorgemeten: het spoor eindigt blind. Blijven over pin 17 (PB3) en 18
+  # (PB4), en die zijn met de meter nog niet gevolgd.
+  #
+  # Zolang niemand met een multimeter bij de print staat doen deze schakelaars
+  # niets nuttigs - ze zetten alleen een pin hoog waarvan we niet weten wat
+  # eraan hangt. De AVR kan het nog steeds, dus terugzetten kost geen burn:
+  #
+  # - platform: template
+  #   name: "Onbekend pin 17 (PB3)"
+  #   optimistic: true
+  #   restore_mode: ALWAYS_OFF
+  #   entity_category: config
+  #   icon: mdi:help-circle-outline
+  #   turn_on_action:
+  #     - lambda: 'id(otlink)->set_test_out(0x04, true);'
+  #   turn_off_action:
+  #     - lambda: 'id(otlink)->set_test_out(0x04, false);'
+  #
+  # - platform: template
+  #   name: "Onbekend pin 18 (PB4)"
+  #   optimistic: true
+  #   restore_mode: ALWAYS_OFF
+  #   entity_category: config
+  #   icon: mdi:help-circle-outline
+  #   turn_on_action:
+  #     - lambda: 'id(otlink)->set_test_out(0x08, true);'
+  #   turn_off_action:
+  #     - lambda: 'id(otlink)->set_test_out(0x08, false);'
+
+  # ── De relais ──
+  #
+  # K3 is een droog contact van 10 A waarmee je een AAN/UIT-ketel aanzet. Laat
+  # dit uit bij een OpenTherm-ketel: K3 deelt zijn voorschakelweerstand met de
+  # noodbrug, en samen aan zakt de spoelspanning zo ver in dat er niets meer
+  # betrouwbaar aantrekt. De AVR blokkeert die combinatie ook zelf.
+  - platform: template
+    name: "Ketelvraag-relais vrijgeven"
+    optimistic: true
+    restore_mode: ALWAYS_OFF
+    entity_category: config
+    icon: mdi:electric-switch-closed
+    turn_on_action:
+      - lambda: 'id(otlink)->set_demand_enabled(true);'
+    turn_off_action:
+      - lambda: 'id(otlink)->set_demand_enabled(false);'
+    web_server:
+      sorting_group_id: grp_instellingen
+      sorting_weight: 4
+
+  # ── De noodbrug met de hand bedienen: uitgeschakeld ──
+  #
+  # De noodbrug hoort niet met de hand bediend te worden. Aanzetten hangt de
+  # thermostaat rechtstreeks aan de ketel en zet de hele controlbox buitenspel;
+  # dat is een noodstand, geen bedieningsoptie. De AVR trekt hem zelf aan zodra
+  # de ESP32 zwijgt, en dat gebeurt in firmware - los van deze YAML en dus ook
+  # als Home Assistant of het netwerk eruit ligt.
+  #
+  # Wat er nog wel is: de binary_sensor "Noodbrug aangetrokken" verderop. Die
+  # laat zien wanneer de AVR zelf naar de noodstand is gegaan, en dat wil je
+  # weten.
+  #
+  # Terugzetten als je hem toch wilt kunnen forceren:
+  #
+  # - platform: template
+  #   name: "Noodbrug volgt dipswitch"
+  #   optimistic: true
+  #   restore_mode: RESTORE_DEFAULT_OFF
+  #   entity_category: config
+  #   icon: mdi:toggle-switch-outline
+  #   turn_on_action:
+  #     - lambda: 'id(otlink)->set_relay_follows_switch(true);'
+  #   turn_off_action:
+  #     - lambda: 'id(otlink)->set_relay_follows_switch(false);'
+  #
+  # - platform: template
+  #   name: "Noodbrug K1+K2"
+  #   optimistic: true
+  #   restore_mode: ALWAYS_OFF
+  #   entity_category: config
+  #   icon: mdi:electric-switch
+  #   turn_on_action:
+  #     - lambda: 'id(otlink)->set_relay(true);'
+  #   turn_off_action:
+  #     - lambda: 'id(otlink)->set_relay(false);'
 
 button:
   - platform: restart
     name: "Restart ${friendly_name}"
+    web_server:
+      sorting_group_id: grp_systeem
+      sorting_weight: 1
 
 # ═══════════════════════════════════════════════════════════════
 #  UITLEZEN
@@ -199,6 +549,9 @@ sensor:
     device_class: temperature
     state_class: measurement
     accuracy_decimals: 1
+    web_server:
+      sorting_group_id: grp_wp
+      sorting_weight: 5
 
   - platform: template
     name: "Retour"
@@ -208,6 +561,9 @@ sensor:
     device_class: temperature
     state_class: measurement
     accuracy_decimals: 1
+    web_server:
+      sorting_group_id: grp_wp
+      sorting_weight: 6
 
   - platform: template
     name: "Buiten"
@@ -217,6 +573,9 @@ sensor:
     device_class: temperature
     state_class: measurement
     accuracy_decimals: 1
+    web_server:
+      sorting_group_id: grp_wp
+      sorting_weight: 8
 
   - platform: template
     name: "Delta T"
@@ -226,6 +585,9 @@ sensor:
     state_class: measurement
     accuracy_decimals: 1
     entity_category: diagnostic
+    web_server:
+      sorting_group_id: grp_wp
+      sorting_weight: 7
 
   - platform: template
     name: "Stand"
@@ -233,6 +595,9 @@ sensor:
     update_interval: 10s
     accuracy_decimals: 0
     icon: mdi:gauge
+    web_server:
+      sorting_group_id: grp_wp
+      sorting_weight: 9
 
   - platform: template
     name: "Vermogen"
@@ -242,6 +607,9 @@ sensor:
     device_class: power
     state_class: measurement
     accuracy_decimals: 0
+    web_server:
+      sorting_group_id: grp_wp
+      sorting_weight: 10
 
   - platform: template
     name: "Compressor"
@@ -250,19 +618,126 @@ sensor:
     state_class: measurement
     accuracy_decimals: 0
     icon: mdi:sine-wave
+    web_server:
+      sorting_group_id: grp_wp
+      sorting_weight: 11
+
+  # ── Thermostaat en CV-ketel, via de AVR-brug ──
+
+  - platform: template
+    name: "Kamertemperatuur"
+    lambda: 'return id(otlink)->get_room_temp();'
+    update_interval: 10s
+    unit_of_measurement: "°C"
+    device_class: temperature
+    state_class: measurement
+    accuracy_decimals: 1
+    web_server:
+      sorting_group_id: grp_thermostaat
+      sorting_weight: 1
+
+  - platform: template
+    name: "Gewenste kamertemperatuur"
+    lambda: 'return id(otlink)->get_room_setpoint();'
+    update_interval: 10s
+    unit_of_measurement: "°C"
+    device_class: temperature
+    state_class: measurement
+    accuracy_decimals: 1
+    web_server:
+      sorting_group_id: grp_thermostaat
+      sorting_weight: 2
+
+  # Wat de thermostaat vraagt VOOR de rem. Hiermee zie je hoeveel warmte er
+  # werkelijk gevraagd wordt, ook terwijl je de ketel tegenhoudt - de basis
+  # voor de beslissing of de warmtepomp het alleen aankan.
+  - platform: template
+    name: "Gevraagd ketelsetpoint"
+    lambda: 'return id(otlink)->get_requested_setpoint();'
+    update_interval: 10s
+    unit_of_measurement: "°C"
+    device_class: temperature
+    state_class: measurement
+    accuracy_decimals: 0
+    icon: mdi:target
+    web_server:
+      sorting_group_id: grp_ketel
+      sorting_weight: 3
+
+  # Wat de ketel zélf meet. Vergelijk met "Aanvoer" van de warmtepomp: lopen
+  # ze mee, dan meet de ketel het opgewarmde water en is de substitutie niet
+  # nodig.
+  - platform: template
+    name: "Keteltemperatuur"
+    lambda: 'return id(otlink)->get_boiler_temp();'
+    update_interval: 10s
+    unit_of_measurement: "°C"
+    device_class: temperature
+    state_class: measurement
+    accuracy_decimals: 1
+    icon: mdi:water-boiler
+    web_server:
+      sorting_group_id: grp_ketel
+      sorting_weight: 1
+
+  - platform: template
+    name: "Ketelmodulatie"
+    lambda: 'return id(otlink)->get_modulation();'
+    update_interval: 10s
+    unit_of_measurement: "%"
+    state_class: measurement
+    accuracy_decimals: 0
+    icon: mdi:fire
+    web_server:
+      sorting_group_id: grp_ketel
+      sorting_weight: 2
+
+  # Hoe vaak de AVR opnieuw is gestart sinds de laatste koude start. Loopt dit
+  # op, dan is er een resetlus - dat lijkt van buiten op een protocolprobleem.
+  - platform: template
+    name: "Brug herstarts"
+    lambda: 'return id(otlink)->get_boot_count();'
+    update_interval: 30s
+    accuracy_decimals: 0
+    entity_category: diagnostic
+    icon: mdi:restart-alert
+    web_server:
+      sorting_group_id: grp_diag
+      sorting_weight: 2
+
+  - platform: template
+    name: "Brug gemiste berichten"
+    lambda: 'return id(otlink)->get_missed();'
+    update_interval: 30s
+    accuracy_decimals: 0
+    state_class: total_increasing
+    entity_category: diagnostic
+    icon: mdi:alert-outline
+    web_server:
+      sorting_group_id: grp_diag
+      sorting_weight: 3
 
   # ── Diagnostiek ──
   - platform: uptime
     name: ${name} Uptime
+    web_server:
+      sorting_group_id: grp_systeem
+      sorting_weight: 2
   - platform: wifi_signal
     name: ${name} WiFi Signal
     update_interval: 120s
+    web_server:
+      sorting_group_id: grp_systeem
+      sorting_weight: 3
 
 binary_sensor:
   - platform: template
     name: "Actief"
     lambda: 'return id(wp)->get_running();'
     device_class: running
+    web_server:
+      sorting_group_id: grp_wp
+      sorting_weight: 12
 
   # "Defrost" tijdelijk verwijderd: de byte die we ervoor gebruikten (ID1 idx4)
   # bleek gewoon een bedrijfsstatus (0x01 zodra de unit draait). Zodra de echte
@@ -273,6 +748,132 @@ binary_sensor:
     lambda: 'return id(wp)->get_comm_ok();'
     device_class: connectivity
     entity_category: diagnostic
+    web_server:
+      sorting_group_id: grp_diag
+      sorting_weight: 4
+
+  # ── Thermostaat en CV-ketel ──
+
+  - platform: template
+    name: "Warmtevraag thermostaat"
+    lambda: 'return id(otlink)->get_ch_demand();'
+    device_class: heat
+    icon: mdi:radiator
+    web_server:
+      sorting_group_id: grp_thermostaat
+      sorting_weight: 3
+
+  - platform: template
+    name: "Tapwatervraag"
+    lambda: 'return id(otlink)->get_dhw_demand();'
+    icon: mdi:shower-head
+    web_server:
+      sorting_group_id: grp_thermostaat
+      sorting_weight: 4
+
+  - platform: template
+    name: "Ketel CV actief"
+    lambda: 'return id(otlink)->get_ch_active();'
+    device_class: heat
+    web_server:
+      sorting_group_id: grp_ketel
+      sorting_weight: 4
+
+  # Tijdens tapwaterbereiding levert de ketel tijdelijk geen CV. Dat is
+  # normaal; hiermee zie je wanneer dat speelt.
+  - platform: template
+    name: "Ketel tapwater actief"
+    lambda: 'return id(otlink)->get_dhw_active();'
+    icon: mdi:water-thermometer
+    web_server:
+      sorting_group_id: grp_ketel
+      sorting_weight: 5
+
+  - platform: template
+    name: "Vlam"
+    lambda: 'return id(otlink)->get_flame();'
+    icon: mdi:fire
+    web_server:
+      sorting_group_id: grp_ketel
+      sorting_weight: 6
+
+  - platform: template
+    name: "Ketelstoring"
+    lambda: 'return id(otlink)->get_boiler_fault();'
+    device_class: problem
+    web_server:
+      sorting_group_id: grp_ketel
+      sorting_weight: 7
+
+  - platform: template
+    name: "Rem actief"
+    lambda: 'return id(otlink)->get_brake_active();'
+    icon: mdi:hand-back-left
+    entity_category: diagnostic
+    web_server:
+      sorting_group_id: grp_beleid
+      sorting_weight: 2
+
+  # ── Link-diagnose ──
+  # In de controlbox is dit je enige venster op de AVR: geen seriële monitor,
+  # geen LED. Valt "AVR-link" weg, dan valt de brug zelf terug op ongewijzigd
+  # doorgeven en blijft het huis warm - maar dan weet je het tenminste.
+
+  # Socket-pin 25: de schakelaar op de voorkant, zoals de AVR hem ziet.
+  - platform: template
+    name: "Dipswitch keteltype (pin 25)"
+    lambda: 'return id(otlink)->get_front_switch();'
+    icon: mdi:toggle-switch
+    web_server:
+      sorting_group_id: grp_diag
+      sorting_weight: 7
+
+  # Socket-pin 28: de aan/uit-warmtevraag van het origineel, hoog vanaf een
+  # setpoint van 20 graden. Loopt mee met de rem.
+  - platform: template
+    name: "Ketelvraag-relais K3"
+    lambda: 'return id(otlink)->get_demand_out();'
+    entity_category: diagnostic
+    icon: mdi:radiator
+    web_server:
+      sorting_group_id: grp_diag
+      sorting_weight: 6
+
+  - platform: template
+    name: "Noodbrug aangetrokken"
+    lambda: 'return id(otlink)->get_relay_active();'
+    entity_category: diagnostic
+    icon: mdi:electric-switch
+    web_server:
+      sorting_group_id: grp_diag
+      sorting_weight: 5
+
+  - platform: template
+    name: "Brug verbonden"
+    lambda: 'return id(otlink)->get_link_ok();'
+    device_class: connectivity
+    entity_category: diagnostic
+    web_server:
+      sorting_group_id: grp_diag
+      sorting_weight: 1
+
+  - platform: template
+    name: "Thermostaat verbonden"
+    lambda: 'return id(otlink)->get_thermostat_ok();'
+    device_class: connectivity
+    entity_category: diagnostic
+    web_server:
+      sorting_group_id: grp_thermostaat
+      sorting_weight: 6
+
+  - platform: template
+    name: "Ketel verbonden"
+    lambda: 'return id(otlink)->get_boiler_ok();'
+    device_class: connectivity
+    entity_category: diagnostic
+    web_server:
+      sorting_group_id: grp_ketel
+      sorting_weight: 8
 
 text_sensor:
   - platform: version
