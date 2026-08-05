@@ -93,6 +93,122 @@ interval:
             id(otlink)->override_to_thermostat(27, buiten);
           }
 
+  # ═══════════════════════════════════════════════════════════════
+  #  DE KOPPELING: de thermostaat stuurt de warmtepomp
+  # ═══════════════════════════════════════════════════════════════
+  #
+  # Anna is een modulerende OpenTherm-thermostaat: zij rekent zelf uit welke
+  # AANVOERTEMPERATUUR ze wil en vraagt die via Data-ID 1. Dat is precies de
+  # eenheid die de warmtepomp verwacht, dus er hoeft niets vertaald te worden -
+  # de kamertemperatuur-naar-water-vertaling heeft zij al gedaan.
+  #
+  # Wat wij eraan toevoegen is de hybride-beslissing: wanneer mag het gas erbij?
+  # In drie trappen, van zuinig naar warm:
+  #
+  #   rust        ketel krijgt het rustsetpoint (10 graden) en blijft koud
+  #   bijspringen ketel krijgt een instelbaar niveau en helpt mee
+  #   los         ketel krijgt de echte vraag van de thermostaat
+  #
+  # De ketel gaat NOOIT als eerste aan. Hij komt pas in beeld als de warmtepomp
+  # aantoonbaar tekortschiet, lang genoeg, en het buiten koud genoeg is.
+  - interval: 30s
+    then:
+      - lambda: |-
+          if (!id(sw_koppeling)->state) { id(g_reden) = "koppeling uit"; return; }
+
+          const float vraag  = id(otlink)->get_ot(1, aurea_link::OT_FROM_STAT);
+          const float buiten = id(wp)->get_outside();
+          const float doel_max = id(n_wp_plafond)->state;
+
+          // ── Vangnet 1: geen warmtepomp, dan geen blokkade ──
+          // Anders koelt het huis af terwijl de ketel netjes op 10 graden staat
+          // te wachten op een pomp die er niet meer is.
+          if (!id(wp)->get_comm_ok()) {
+            id(sw_brake)->turn_off();
+            id(g_reden) = "warmtepomp stil - ketel vrij";
+            id(g_tekort_s) = 0;
+            return;
+          }
+
+          // ── Vangnet 2: geen thermostaat ──
+          if (!id(otlink)->get_thermostat_ok() || std::isnan(vraag)) {
+            id(sw_brake)->turn_off();
+            id(wp)->set_system_on(false);
+            id(g_reden) = "geen thermostaat - ketel vrij";
+            id(g_tekort_s) = 0;
+            return;
+          }
+
+          // ── Geen warmtevraag ──
+          if (vraag < 20.0f) {
+            id(wp)->set_system_on(false);
+            id(otlink)->set_brake_setpoint(id(n_brake_setpoint)->state);
+            id(sw_brake)->turn_on();
+            id(g_reden) = "geen warmtevraag";
+            id(g_tekort_s) = 0;
+            return;
+          }
+
+          // ── Er is vraag: de warmtepomp gaat aan de slag ──
+          const float doel = vraag > doel_max ? doel_max : vraag;
+          id(wp)->set_system_on(true);
+          id(wp)->set_setpoint(doel);
+          id(n_setpoint)->publish_state(doel);
+
+          // De thermostaat de WP-temperaturen tonen, anders ziet zij een koude
+          // ketel en schroeft ze haar vraag op - precies wat we niet willen.
+          id(otlink)->set_subst_temp(true);
+
+          // ── Schiet de pomp tekort? ──
+          // Twee redenen: de vraag ligt boven wat we hem toestaan, of hij draait
+          // op volle kracht en haalt het toch niet. Die tweede meet wat de unit
+          // werkelijk kan in plaats van het te gokken.
+          const float aanvoer = id(wp)->get_supply();
+          const bool  vol     = id(wp)->get_stand() >= id(wp)->get_max_stand();
+          const bool  tekort  = (vraag > doel_max) ||
+                                (vol && !std::isnan(aanvoer) && aanvoer < doel - 2.0f);
+
+          if (tekort) id(g_tekort_s) += 30; else id(g_tekort_s) = 0;
+
+          const int  wacht_s   = (int) (id(n_bijstook_wacht)->state * 60);
+          const bool lang_genoeg = id(g_tekort_s) >= wacht_s;
+          const bool koud_genoeg = !std::isnan(buiten) && buiten < id(n_bijstook_buiten)->state;
+
+          // ── Vangnet 3: de kamer zakt door ──
+          // Ondanks alles blijft het kouder worden. Dan mag het gas er vol in,
+          // ook boven de buitentemperatuurgrens. Uit te zetten als je liever een
+          // graad kouder zit dan stookt.
+          const float kamer   = id(otlink)->get_room_temp();
+          const float gewenst = id(otlink)->get_room_setpoint();
+          const bool  kamer_zakt = !std::isnan(kamer) && !std::isnan(gewenst) &&
+                                   kamer < gewenst - 1.0f;
+          if (id(sw_vangnet)->state && kamer_zakt && id(g_tekort_s) >= 2 * wacht_s) {
+            id(sw_brake)->turn_off();
+            id(g_reden) = str_sprintf("kamer %.1f onder gewenst %.1f - ketel vrij",
+                                      kamer, gewenst);
+            return;
+          }
+
+          // ── Bijspringen of niet ──
+          if (lang_genoeg && koud_genoeg) {
+            id(otlink)->set_brake_setpoint(id(n_bijstook_niveau)->state);
+            id(sw_brake)->turn_on();
+            id(g_reden) = str_sprintf("bijstook %.0f gr - tekort %d min, buiten %.1f",
+                                      id(n_bijstook_niveau)->state,
+                                      id(g_tekort_s) / 60, buiten);
+          } else {
+            id(otlink)->set_brake_setpoint(id(n_brake_setpoint)->state);
+            id(sw_brake)->turn_on();
+            if (!tekort)
+              id(g_reden) = str_sprintf("warmtepomp redt het (%.0f gr gevraagd)", vraag);
+            else if (!koud_genoeg)
+              id(g_reden) = str_sprintf("tekort, maar buiten %.1f boven grens %.1f",
+                                        buiten, id(n_bijstook_buiten)->state);
+            else
+              id(g_reden) = str_sprintf("tekort %d van %d min", id(g_tekort_s) / 60,
+                                        wacht_s / 60);
+          }
+
   - interval: 5s
     then:
       - lambda: |-
@@ -101,6 +217,22 @@ interval:
           // de thermostaat in de zelfstandige stand ziet hoe hard er gewerkt
           // wordt in plaats van een vlakke nul.
           id(otlink)->set_standalone_modulation(id(wp)->get_stand() * 10.0f);
+
+globals:
+  # Hoe lang de warmtepomp zijn setpoint al niet haalt, in seconden. Loopt
+  # alleen op zolang het tekort er werkelijk is en springt terug op nul zodra
+  # hij het wel haalt - geen optelsom over de dag.
+  - id: g_tekort_s
+    type: int
+    restore_value: false
+    initial_value: '0'
+
+  # Waarom de ketel staat waar hij staat. Zonder dit is het bijstookbeleid een
+  # zwarte doos die soms je ketel aanzet en je mag raden waarom.
+  - id: g_reden
+    type: std::string
+    restore_value: false
+    initial_value: '"koppeling uit"'
 
 logger:
 
@@ -250,6 +382,95 @@ number:
     web_server:
       sorting_group_id: grp_beleid
       sorting_weight: 3
+
+  # ── Het bijstookbeleid ──
+
+  # Het plafond op wat we van de vraag overnemen. Standaard 60 - de bovenkant
+  # uit de Chofu-datasheet - want de thermostaat kapt haar eigen vraag al af op
+  # wat er in HAAR instellingen staat. Lager zetten overrulet dat stilletjes.
+  #
+  # Het plafond is hier niet de belangrijkste rem: de tekort-meting hieronder
+  # merkt vanzelf wanneer de pomp niet meekomt, ongeacht wat hier staat.
+  - platform: template
+    name: "Maximale aanvoer warmtepomp"
+    id: n_wp_plafond
+    min_value: 20
+    max_value: 60
+    step: 1
+    initial_value: 60
+    optimistic: true
+    restore_value: true
+    unit_of_measurement: "°C"
+    mode: box
+    icon: mdi:thermometer-chevron-up
+    entity_category: config
+    web_server:
+      sorting_group_id: grp_beleid
+      sorting_weight: 10
+
+  # Hoe lang de warmtepomp mag tekortschieten voordat de ketel mag bijspringen.
+  # De teller loopt alleen zolang het tekort er is en springt terug op nul zodra
+  # het setpoint wel gehaald wordt.
+  - platform: template
+    name: "Wachttijd voor bijstook"
+    id: n_bijstook_wacht
+    min_value: 1
+    max_value: 120
+    step: 1
+    initial_value: 15
+    optimistic: true
+    restore_value: true
+    unit_of_measurement: "min"
+    mode: box
+    icon: mdi:timer-sand
+    entity_category: config
+    web_server:
+      sorting_group_id: grp_beleid
+      sorting_weight: 11
+
+  # Boven deze buitentemperatuur mag de ketel niet bijspringen, hoe lang de
+  # warmtepomp ook tekortschiet. Zonde om gas te stoken op een dag waarop de
+  # pomp het hoort te redden.
+  #
+  # LET OP: dit is de voeler van de warmtepomp, en die leest ongeveer 2,5 graad
+  # HOGER dan een weerbericht (gemeten over 350 uur tegen de Anna). Bedoel je
+  # "onder nul", zet hem dan rond 2,5.
+  - platform: template
+    name: "Bijstook pas onder buitentemperatuur"
+    id: n_bijstook_buiten
+    min_value: -20
+    max_value: 20
+    step: 0.5
+    initial_value: 2.5
+    optimistic: true
+    restore_value: true
+    unit_of_measurement: "°C"
+    mode: box
+    icon: mdi:snowflake-thermometer
+    entity_category: config
+    web_server:
+      sorting_group_id: grp_beleid
+      sorting_weight: 12
+
+  # Wat de ketel krijgt als hij mag bijspringen. Dit hoeft niet de volle vraag
+  # van de thermostaat te zijn: op 35 graden helpt hij mee zonder het over te
+  # nemen, en blijft de warmtepomp het grootste deel leveren.
+  - platform: template
+    name: "Ketelsetpoint bij bijstook"
+    id: n_bijstook_niveau
+    min_value: 10
+    max_value: 80
+    step: 1
+    initial_value: 35
+    optimistic: true
+    restore_value: true
+    unit_of_measurement: "°C"
+    mode: box
+    icon: mdi:fire
+    entity_category: config
+    web_server:
+      sorting_group_id: grp_beleid
+      sorting_weight: 13
 
   # DE THERMOSTAAT OP AFSTAND ZETTEN.
   # Data-ID 9 gaat van slave naar master, dus de brug kan de thermostaat een
@@ -485,6 +706,36 @@ switch:
   # en op deze print eindigt het spoor blind. Er valt niets te vinden.
   # De AVR kan ze nog steeds aansturen (set_test_out), mocht een andere
   # printversie ze wel bedraden.
+
+  # DE KOPPELING AAN. Hiermee neemt het beleid hierboven de bediening over:
+  # setpoint, systeem aan/uit en de blokkade worden vanaf dan automatisch gezet.
+  # Uit betekent dat je alles met de hand doet, zoals voorheen.
+  - platform: template
+    name: "Thermostaat stuurt warmtepomp"
+    id: sw_koppeling
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_OFF
+    icon: mdi:link-variant
+    web_server:
+      sorting_group_id: grp_beleid
+      sorting_weight: 4
+
+  # Het laatste vangnet: blijft de kamer meer dan een graad onder het gewenste
+  # zakken terwijl de warmtepomp al twee keer de wachttijd tekortschiet, dan mag
+  # de ketel er vol in - ook boven de buitentemperatuurgrens.
+  #
+  # Uit zetten als je liever een graad kouder zit dan gas stookt. Dan is de
+  # grens absoluut.
+  - platform: template
+    name: "Vangnet: ketel vrij bij koude kamer"
+    id: sw_vangnet
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_ON
+    entity_category: config
+    icon: mdi:shield-home
+    web_server:
+      sorting_group_id: grp_beleid
+      sorting_weight: 14
 
   # ── K3, het aan/uit-ketelcontact: uitgeschakeld ──
   #
@@ -731,6 +982,19 @@ sensor:
     web_server:
       sorting_group_id: grp_ketel
       sorting_weight: 4
+
+  # Hoe lang de warmtepomp zijn setpoint al niet haalt. Staat op nul zodra hij
+  # het wel haalt; is dit hoger dan de wachttijd, dan mag de ketel bijspringen.
+  - platform: template
+    name: "Tekort warmtepomp"
+    lambda: 'return id(g_tekort_s) / 60.0f;'
+    update_interval: 30s
+    unit_of_measurement: "min"
+    accuracy_decimals: 0
+    icon: mdi:timer-sand
+    web_server:
+      sorting_group_id: grp_beleid
+      sorting_weight: 7
 
   - platform: template
     name: "Ketelretour"
@@ -992,6 +1256,17 @@ binary_sensor:
       sorting_weight: 8
 
 text_sensor:
+  # Waarom de ketel staat waar hij staat. Zonder dit veld is het bijstookbeleid
+  # een zwarte doos die af en toe je ketel aanzet.
+  - platform: template
+    name: "Bijstookreden"
+    lambda: 'return id(g_reden);'
+    update_interval: 30s
+    icon: mdi:comment-question-outline
+    web_server:
+      sorting_group_id: grp_beleid
+      sorting_weight: 8
+
   # Dipswitch 2 op de print, uitgelezen via socket-pin 25 (PC2). Die bepaalt
   # met wat voor ketel de controlbox denkt te praten:
   #

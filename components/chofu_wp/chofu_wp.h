@@ -38,6 +38,8 @@ class ChofuWP : public PollingComponent, public uart::UARTDevice {
   float get_outside() const { return t_outside_; }
   float get_delta_t() const { return t_supply_ - t_return_; }
   int get_stand() const { return stand_; }             // Wat WIJ commanderen
+  int get_max_stand() const { return max_stand_; }      // Bovengrens uit de config
+  float get_setpoint() const { return setpoint_; }
   int get_wp_speed() const { return wp_speed_; }        // Wat de WP rapporteert
   float get_power() const { return wp_power_w_; }       // Echt vermogen (W)
   bool get_defrost() const { return defrost_; }
