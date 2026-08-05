@@ -688,7 +688,7 @@ sensor:
   # nodig.
   - platform: template
     name: "Keteltemperatuur"
-    lambda: 'return id(otlink)->get_boiler_temp();'
+    lambda: 'return id(otlink)->get_ot(25);'
     update_interval: 10s
     unit_of_measurement: "°C"
     device_class: temperature
@@ -709,6 +709,22 @@ sensor:
   #   25 aanvoertemperatuur ketel     28 retourtemperatuur ketel
   #   26 tapwatertemperatuur          27 buitentemperatuur (ketelvoeler)
   #   17 relatieve modulatie          18 waterdruk CV
+
+  # Wat er na de blokkade werkelijk naar de ketel gaat. Naast "Gevraagd
+  # ketelsetpoint" - dat is wat de thermostaat vroeg - zie je hier het effect
+  # van het beleid. Staan ze gelijk, dan gaat de vraag ongewijzigd door.
+  - platform: template
+    name: "Setpoint naar de ketel"
+    lambda: 'return id(otlink)->get_ot(1, aurea_link::OT_TO_BOILER);'
+    update_interval: 10s
+    unit_of_measurement: "°C"
+    device_class: temperature
+    state_class: measurement
+    accuracy_decimals: 1
+    icon: mdi:arrow-right-bold
+    web_server:
+      sorting_group_id: grp_ketel
+      sorting_weight: 4
 
   - platform: template
     name: "Ketelretour"
@@ -783,7 +799,7 @@ sensor:
 
   - platform: template
     name: "Ketelmodulatie"
-    lambda: 'return id(otlink)->get_modulation();'
+    lambda: 'return id(otlink)->get_ot(17);'
     update_interval: 10s
     unit_of_measurement: "%"
     state_class: measurement
