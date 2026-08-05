@@ -319,7 +319,14 @@ void ChofuWP::run_control_() {
 //  Setters
 // ═══════════════════════════════════════════════════════════════
 void ChofuWP::set_setpoint(float v) {
-  setpoint_ = clamp(v, setpoint_min_, setpoint_max_);
+  const float nieuw = clamp(v, setpoint_min_, setpoint_max_);
+  // Alleen melden als er werkelijk iets verandert. Sinds het bijstookbeleid
+  // deze setters elke 30 s aanroept zou loggen-bij-elke-aanroep een log vol
+  // regels opleveren waarin niets gebeurt - en dan zie je de ene regel die er
+  // wel toe doet niet meer staan.
+  if (fabsf(nieuw - setpoint_) < 0.05f)
+    return;
+  setpoint_ = nieuw;
   ESP_LOGI(TAG, "Setpoint aanvoer: %.1f°C", setpoint_);
 }
 
@@ -333,11 +340,15 @@ void ChofuWP::set_cooling(bool c) {
 }
 
 void ChofuWP::set_system_on(bool on) {
+  if (on == system_on_)
+    return;
   system_on_ = on;
   ESP_LOGI(TAG, "Systeem: %s", on ? "AAN" : "UIT");
 }
 
 void ChofuWP::set_auto_mode(bool a) {
+  if (a == auto_mode_)
+    return;
   auto_mode_ = a;
   ESP_LOGI(TAG, "Modus: %s", a ? "auto" : "handmatig");
 }
