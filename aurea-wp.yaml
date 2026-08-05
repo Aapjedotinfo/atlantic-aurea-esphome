@@ -819,15 +819,6 @@ binary_sensor:
   # geen LED. Valt "AVR-link" weg, dan valt de brug zelf terug op ongewijzigd
   # doorgeven en blijft het huis warm - maar dan weet je het tenminste.
 
-  # Socket-pin 25: de schakelaar op de voorkant, zoals de AVR hem ziet.
-  - platform: template
-    name: "Dipswitch keteltype (pin 25)"
-    lambda: 'return id(otlink)->get_front_switch();'
-    icon: mdi:toggle-switch
-    web_server:
-      sorting_group_id: grp_diag
-      sorting_weight: 7
-
   # Socket-pin 28: de aan/uit-warmtevraag van het origineel, hoog vanaf een
   # setpoint van 20 graden. Loopt mee met de rem.
   - platform: template
@@ -876,6 +867,27 @@ binary_sensor:
       sorting_weight: 8
 
 text_sensor:
+  # Dipswitch 2 op de print, uitgelezen via socket-pin 25 (PC2). Die bepaalt
+  # met wat voor ketel de controlbox denkt te praten:
+  #
+  #   ON  = het contact staat dicht naar massa = PC2 laag = OpenTherm
+  #   OFF = open = PC2 hoog via de interne pull-up = aan/uit
+  #
+  # Als binaire sensor stond hier "aan"/"uit", en dan moet je elke keer opnieuw
+  # bedenken welke stand wat betekent. Nu staat het er gewoon.
+  #
+  # De AVR meldt dit bit als 1 wanneer PC2 laag is, dus true = OpenTherm.
+  - platform: template
+    name: "Keteltype (dipswitch)"
+    lambda: |-
+      return id(otlink)->get_front_switch() ? std::string("OpenTherm-ketel")
+                                            : std::string("Aan/uit-ketel");
+    update_interval: 10s
+    icon: mdi:toggle-switch
+    web_server:
+      sorting_group_id: grp_diag
+      sorting_weight: 7
+
   - platform: version
     name: ${name} ESPHome Version
   - platform: wifi_info
