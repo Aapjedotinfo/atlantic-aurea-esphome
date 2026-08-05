@@ -442,38 +442,11 @@ switch:
       sorting_group_id: grp_beleid
       sorting_weight: 6
 
-  # ── Onbekende uitgangen: uitgeschakeld ──
-  #
-  # Het origineel stelt vijf pinnen in als uitgang en houdt ze permanent laag,
-  # zonder ze ooit te schrijven. Pin 4 (PD2), 14 (PB0) en 15 (PB1) zijn
-  # doorgemeten: het spoor eindigt blind. Blijven over pin 17 (PB3) en 18
-  # (PB4), en die zijn met de meter nog niet gevolgd.
-  #
-  # Zolang niemand met een multimeter bij de print staat doen deze schakelaars
-  # niets nuttigs - ze zetten alleen een pin hoog waarvan we niet weten wat
-  # eraan hangt. De AVR kan het nog steeds, dus terugzetten kost geen burn:
-  #
-  # - platform: template
-  #   name: "Onbekend pin 17 (PB3)"
-  #   optimistic: true
-  #   restore_mode: ALWAYS_OFF
-  #   entity_category: config
-  #   icon: mdi:help-circle-outline
-  #   turn_on_action:
-  #     - lambda: 'id(otlink)->set_test_out(0x04, true);'
-  #   turn_off_action:
-  #     - lambda: 'id(otlink)->set_test_out(0x04, false);'
-  #
-  # - platform: template
-  #   name: "Onbekend pin 18 (PB4)"
-  #   optimistic: true
-  #   restore_mode: ALWAYS_OFF
-  #   entity_category: config
-  #   icon: mdi:help-circle-outline
-  #   turn_on_action:
-  #     - lambda: 'id(otlink)->set_test_out(0x08, true);'
-  #   turn_off_action:
-  #     - lambda: 'id(otlink)->set_test_out(0x08, false);'
+  # De schakelaars om de vijf "nergens beschreven" uitgangen mee te proberen
+  # zijn weg. Alle vijf - pin 4, 14, 15, 17 en 18 - zijn inmiddels doorgemeten
+  # en op deze print eindigt het spoor blind. Er valt niets te vinden.
+  # De AVR kan ze nog steeds aansturen (set_test_out), mocht een andere
+  # printversie ze wel bedraden.
 
   # ── K3, het aan/uit-ketelcontact: uitgeschakeld ──
   #

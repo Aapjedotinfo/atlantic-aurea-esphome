@@ -27,8 +27,8 @@ ATmega8 in DIP28, "Haddon T1.1".
 | 14 | PB0 | niet aangesloten | |
 | 15 | PB1 | niet aangesloten | |
 | 16 | PB2 | diode, dan R26 (10k) naar de basis van T3 | T3 schakelt K1 **en** K2 tegelijk |
-| 17 | PB3 | | |
-| 18 | PB4 | | |
+| 17 | PB3 | niet aangesloten | &mdash; |
+| 18 | PB4 | niet aangesloten | &mdash; |
 | 19 | PB5 | | |
 | 20 | AVCC | ook naar de basis van T1 | |
 | 21 | AREF | +5 V | |

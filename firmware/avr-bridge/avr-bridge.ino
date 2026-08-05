@@ -602,15 +602,14 @@ static const uint8_t DEMAND_THRESHOLD_C = 20;
 // Het origineel stelt vijf pinnen in als uitgang en houdt ze permanent laag.
 // Inmiddels doorgemeten op deze print:
 //
-//   socket-pin  4  = PD2   NIET AANGESLOTEN
-//   socket-pin 14  = PB0   NIET AANGESLOTEN
-//   socket-pin 15  = PB1   NIET AANGESLOTEN
-//   socket-pin 17  = PB3   nog niet gemeten
-//   socket-pin 18  = PB4   nog niet gemeten
+//   socket-pin  4  = PD2      socket-pin 17 = PB3
+//   socket-pin 14  = PB0      socket-pin 18 = PB4
+//   socket-pin 15  = PB1
 //
-// Die eerste drie eindigen blind - wat past bij een gedeelde codebasis over
-// meerdere modellen. Ze blijven hier staan omdat het niets kost en ze op een
-// andere printversie wel bedraad kunnen zijn.
+// Alle vijf eindigen blind: het spoor houdt gewoon op. Dat past bij een
+// codebasis die over meerdere modellen gedeeld wordt - de firmware stelt ze in,
+// deze print gebruikt ze niet. Ze blijven hier staan omdat het niets kost en ze
+// op een andere printversie wel bedraad kunnen zijn.
 static uint8_t test_out;
 
 static void test_out_update() {
