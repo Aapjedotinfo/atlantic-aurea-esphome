@@ -47,6 +47,19 @@ blijft `aurea-wp`, dus Home Assistant houdt het apparaat en de geschiedenis van
 alle sensoren die in beide bestanden zitten — je krijgt er alleen de
 thermostaat- en ketelentiteiten bij.
 
+> **Wel eerst opruimen bij het wisselen.** ESPHome kiest zijn bouwmap op de
+> apparaatnaam, en die is in beide bestanden gelijk. Wissel je van de ene yaml
+> naar de andere, dan blijft de bouwmap van de vorige staan en krijg je een
+> linkfout over ontbrekende `aurea_link`-symbolen. Eenmalig:
+>
+> ```bash
+> esphome clean aurea-wp.yaml
+> ```
+>
+> Daarna bouwt hij gewoon. Dit is de prijs van dezelfde naam houden, en die is
+> het waard: een andere naam kost je het apparaat en alle geschiedenis in Home
+> Assistant.
+
 ## Wat je nodig hebt
 
 ### Voor IC1 — de warmtepompkant
