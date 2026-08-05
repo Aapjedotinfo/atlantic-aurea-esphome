@@ -745,12 +745,17 @@ switch:
   #        je een graad kouder.
   #
   # Dit is het enige moment waarop de regeling zelf beslist dat comfort voorgaat.
-  # Overal anders wint zuinigheid.
+  # Overal anders wint zuinigheid - en standaard hier dus ook.
+  #
+  # Staat UIT. Wie deze controlbox vervangt doet dat om minder gas te stoken,
+  # niet om een regeling te krijgen die zelf bedenkt dat het wel weer even mag.
+  # Zet hem aan als je merkt dat je op koude dagen te lang koud zit; dan weet je
+  # ook meteen waarom hij aanslaat.
   - platform: template
     name: "Comfort gaat voor gas besparen"
     id: sw_vangnet
     optimistic: true
-    restore_mode: RESTORE_DEFAULT_ON
+    restore_mode: RESTORE_DEFAULT_OFF
     entity_category: config
     icon: mdi:shield-home
     web_server:
