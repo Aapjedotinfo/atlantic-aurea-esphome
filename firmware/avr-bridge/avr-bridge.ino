@@ -438,6 +438,113 @@ static const uint8_t  STATUS_LEN     = 24;
 static const uint32_t LINK_TIMEOUT_MS = 60000;
 static const uint32_t STATUS_EVERY_MS = 2000;
 
+// ── Doorgifte van elk OpenTherm-frame ─────────────────────────────────────
+//
+// Het statusbericht hierboven is een samenvatting: acht waarden die deze chip
+// zelf uitpakt. Dat was kortzichtig. Elke keer dat je een Data-ID erbij wilt -
+// retourtemperatuur, buitentemperatuur, bedrijfsuren - moet de chip uit de voet
+// en opnieuw gebrand. En de rest van het gesprek gooiden we gewoon weg.
+//
+// Daarom gaat nu ELK frame dat hier langskomt ook rauw naar de ESP32, in beide
+// richtingen, inclusief wat wij er zelf van maken. Uitpakken gebeurt daar, en
+// dat is een OTA in plaats van een burn.
+//
+//   F2 <richting> <b3> <b2> <b1> <b0> <som>
+//
+// De richting vertelt of het een vraag of een antwoord was, en van wie:
+static const uint8_t  EVENT_START    = 0xF2;
+static const uint8_t  EVENT_LEN      = 7;
+
+// ── En andersom: de ESP32 mag zelf frames laten versturen ─────────────────
+//
+// Zonder dit moet elke nieuwe injectie hier ingebakken worden, en dat is
+// precies de fout die we hierboven net rechtgezet hebben. Nu is de brug een
+// pijp: wat er verstuurd wordt bepaalt de ESP32.
+//
+//   F3 <modus> <b3> <b2> <b1> <b0> <som>
+//
+// Twee richtingen, en die werken wezenlijk anders:
+//
+//   modus 0  NAAR DE KETEL. Wij zijn daar master, dus we mogen uit onszelf
+//            praten. Het frame gaat in een gaatje tussen twee thermostaat-
+//            transacties door, en het antwoord houden we voor onszelf.
+//
+//   modus 1  NAAR DE THERMOSTAAT. Daar zijn wij slave en mag je niets uit
+//            jezelf sturen; je mag alleen antwoorden. Dit zet dus geen frame
+//            klaar maar een ANTWOORD: vraagt de thermostaat dit Data-ID, dan
+//            krijgt ze deze waarde in plaats van die van de ketel.
+//
+//   modus 2  Die override weer opheffen voor het Data-ID in het frame.
+static const uint8_t  INJECT_START   = 0xF3;
+static const uint8_t  INJECT_LEN     = 7;
+
+// Wachtrij richting de ketel. Vier is ruim: je injecteert hooguit een frame
+// per minuut, en meer dan dat verstoort het gesprek met de thermostaat.
+static uint32_t inj_ring[4];
+static uint8_t  inj_head, inj_tail;
+
+// Antwoord-overrides richting de thermostaat. Acht plekken; dat is genoeg voor
+// alles wat je praktisch wilt vervangen, en een tabel van 256 zou hier een
+// kwart van het RAM opeten.
+struct OtOverride { uint8_t id; uint16_t val; bool used; };
+static OtOverride ovr[8];
+
+static bool ovr_lookup(uint8_t id, uint16_t *out) {
+  for (uint8_t i = 0; i < 8; i++)
+    if (ovr[i].used && ovr[i].id == id) { *out = ovr[i].val; return true; }
+  return false;
+}
+
+static void ovr_set(uint8_t id, uint16_t val) {
+  for (uint8_t i = 0; i < 8; i++)          // bestaande plek bijwerken
+    if (ovr[i].used && ovr[i].id == id) { ovr[i].val = val; return; }
+  for (uint8_t i = 0; i < 8; i++)          // anders een vrije plek
+    if (!ovr[i].used) { ovr[i].id = id; ovr[i].val = val; ovr[i].used = true; return; }
+}
+
+static void ovr_clear(uint8_t id) {
+  for (uint8_t i = 0; i < 8; i++)
+    if (ovr[i].used && ovr[i].id == id) ovr[i].used = false;
+}
+
+#define EV_FROM_STAT    0   // de thermostaat vroeg dit
+#define EV_FROM_BOILER  1   // de ketel antwoordde dit
+#define EV_TO_BOILER    2   // dit stuurden wij door naar de ketel
+#define EV_TO_STAT      3   // dit antwoordden wij de thermostaat
+
+// Ringbuffer, want zenden mag nooit in het doorgeefpad blijven hangen: bij
+// 9600 baud kost een bericht 7 ms en dat is zes OpenTherm-bits. We schrijven
+// alleen weg als de UART-buffer ruimte heeft.
+struct OtEvent { uint8_t dir; uint32_t frame; };
+static OtEvent ev_ring[12];
+static uint8_t ev_head, ev_tail;
+
+static uint8_t sum8(const uint8_t *p, uint8_t n);   // staat verderop
+
+static void ev_push(uint8_t dir, uint32_t frame) {
+  const uint8_t next = (uint8_t) ((ev_head + 1) % 12);
+  if (next == ev_tail) return;   // vol: liever een gat dan de brug ophouden
+  ev_ring[ev_head].dir   = dir;
+  ev_ring[ev_head].frame = frame;
+  ev_head = next;
+}
+
+static void ev_flush() {
+  while (ev_tail != ev_head && Serial.availableForWrite() >= EVENT_LEN) {
+    const OtEvent &e = ev_ring[ev_tail];
+    uint8_t b[EVENT_LEN];
+    b[0] = EVENT_START;
+    b[1] = e.dir;
+    b[2] = (uint8_t) (e.frame >> 24);
+    b[3] = (uint8_t) (e.frame >> 16);
+    b[4] = (uint8_t) (e.frame >> 8);
+    b[5] = (uint8_t) e.frame;
+    b[6] = sum8(b, EVENT_LEN - 1);
+    Serial.write(b, EVENT_LEN);
+    ev_tail = (uint8_t) ((ev_tail + 1) % 12);
+  }
+}
+
 // Vlaggen in het commandobericht
 #define CMD_FLAG_BRAKE        0x01
 #define CMD_FLAG_SUBST_TEMP   0x02
@@ -664,15 +771,40 @@ static uint8_t sum8(const uint8_t *p, uint8_t n) {
 static void link_poll() {
   static uint8_t buf[CMD_LEN];
   static uint8_t idx;
+  static uint8_t want;
 
   while (Serial.available()) {
     uint8_t b = (uint8_t) Serial.read();
-    if (idx == 0 && b != CMD_START) continue;
+
+    // Twee soorten berichten van de ESP32: het parameterbericht en een los
+    // frame dat wij moeten versturen. Het startbyte bepaalt de lengte.
+    if (idx == 0) {
+      if      (b == CMD_START)    want = CMD_LEN;
+      else if (b == INJECT_START) want = INJECT_LEN;
+      else                        continue;
+    }
     buf[idx++] = b;
-    if (idx < CMD_LEN) continue;
+    if (idx < want) continue;
+    const uint8_t len = want;
     idx = 0;
 
-    if (sum8(buf, CMD_LEN - 1) != buf[CMD_LEN - 1]) { link_bad_sum++; continue; }
+    if (sum8(buf, len - 1) != buf[len - 1]) { link_bad_sum++; continue; }
+
+    if (len == INJECT_LEN) {
+      const uint32_t f = ((uint32_t) buf[2] << 24) | ((uint32_t) buf[3] << 16) |
+                         ((uint32_t) buf[4] << 8)  | (uint32_t) buf[5];
+      const uint8_t  id = (uint8_t) (f >> 16);
+      switch (buf[1]) {
+        case 0: {                                  // naar de ketel
+          const uint8_t next = (uint8_t) ((inj_head + 1) % 4);
+          if (next != inj_tail) { inj_ring[inj_head] = f; inj_head = next; }
+          break;
+        }
+        case 1: ovr_set(id, (uint16_t) (f & 0xFFFF)); break;   // antwoord vervangen
+        case 2: ovr_clear(id); break;
+      }
+      continue;
+    }
 
     policy.brake_on       = (buf[1] & CMD_FLAG_BRAKE) != 0;
     policy.subst_temp     = (buf[1] & CMD_FLAG_SUBST_TEMP) != 0;
@@ -864,6 +996,13 @@ static uint32_t substitute_to_boiler(uint32_t f) {
 // warmtepomp, zodat haar regellus ziet dat er warmte geleverd wordt ook als
 // de ketel koud staat.
 static uint32_t substitute_to_thermostat(uint32_t f) {
+  // Door de ESP32 gezette antwoorden gaan voor. Zo kun je de thermostaat elke
+  // waarde voorschotelen zonder dat daar firmware voor nodig is - bijvoorbeeld
+  // de buitentemperatuur van de warmtepomp op ID 27.
+  uint16_t v;
+  if (msg_type(f) == MSG_READ_ACK && ovr_lookup(data_id(f), &v))
+    return replace_value(f, v);
+
   if (!policy.valid) return f;
 
   // De override werkt ook in doorgeefstand. De ketel weet niets van ons
@@ -902,6 +1041,7 @@ static uint32_t    br_request;      // de vraag die we naar de ketel doorgaven
 static uint32_t    br_due_ms;
 static uint32_t    br_poll_ms;      // eigen poll richting de ketel
 static uint32_t    br_retry_ms;     // laatste hertest van een dood gewaande ketel
+static bool        br_ours;         // wacht de thermostaat op dit antwoord, of wij?
 
 // Hoe vaak we een ketel die niet antwoordt opnieuw proberen, terwijl er wel
 // een thermostaat praat. Elke poging kost die ene vraag BOILER_REPLY_TIMEOUT_MS
@@ -979,10 +1119,14 @@ static uint32_t standalone_reply(uint32_t req) {
       val = (id == ID_BOILER_TEMP) ? tenths_to_f88(policy.wp_supply)
                                    : tenths_to_f88(policy.wp_return);
       break;
-    default:
+    default: {
+      // Heeft de ESP32 hier een antwoord voor klaargezet, geef dat dan.
+      uint16_t v;
+      if (ovr_lookup(id, &v)) { val = v; break; }
       // Onbekend netjes afwijzen is beter dan zwijgen: dan gaat de master
       // door naar het volgende Data-ID in plaats van te blijven herhalen.
       return with_parity((req & 0x0FFFFFFFUL) | ((uint32_t) MSG_UNKNOWN_ID << 28));
+    }
   }
   return with_parity(((uint32_t) MSG_READ_ACK << 28) | ((uint32_t) id << 16) | val);
 }
@@ -998,6 +1142,21 @@ static void bridge_poll() {
         // alleen het gesprek in leven. En het maakt de ketelkant los te testen
         // van de thermostaatkant, wat anders onmogelijk is: de ketel is slave
         // en zwijgt tot wij iets vragen.
+        // Staat er iets van de ESP32 klaar voor de ketel? Dan nu, want de
+        // ketelkant is vrij. Wel pas als de thermostaat even stil is: komt er
+        // midden in onze injectie een vraag binnen, dan wacht zij tot de ketel
+        // geantwoord heeft. Dat past ruim binnen haar 800 ms, maar zuinig aan.
+        if (inj_tail != inj_head && (millis() - last_stat_frame_ms) > 150) {
+          const uint32_t f2 = inj_ring[inj_tail];
+          inj_tail = (uint8_t) ((inj_tail + 1) % 4);
+          br_ours = true;
+          ot_send(CH_BOILER, f2);
+          ev_push(EV_TO_BOILER, f2);
+          br_started_ms = millis();
+          br_state = BR_WAIT_BOILER;
+          break;
+        }
+
         if (!obs.stat_alive && (millis() - br_poll_ms) > BOILER_POLL_MS) {
           br_poll_ms = millis();
 
@@ -1022,7 +1181,10 @@ static void bridge_poll() {
                     ((uint32_t) ID_STATUS << 16) |
                     (want_heat ? 0x0100UL : 0UL);
           }
-          ot_send(CH_BOILER, with_parity(frame));
+          frame = with_parity(frame);
+          br_ours = true;
+          ot_send(CH_BOILER, frame);
+          ev_push(EV_TO_BOILER, frame);
           br_started_ms = millis();
           br_state = BR_WAIT_BOILER;
         }
@@ -1032,6 +1194,7 @@ static void bridge_poll() {
       obs.stat_alive = true;
       if (!parity_ok(f)) { if (parity_fails < 15) parity_fails++; break; }
       note_from_thermostat(f);
+      ev_push(EV_FROM_STAT, f);
 
       // Zelf antwoorden als de ketel weg is - anders blijft de thermostaat
       // hangen. Maar NIET voorgoed.
@@ -1059,7 +1222,12 @@ static void bridge_poll() {
       if (!obs.boiler_alive) br_retry_ms = millis();
 
       br_request = f;
-      ot_send(CH_BOILER, substitute_to_boiler(f));
+      br_ours = false;
+      {
+        const uint32_t out = substitute_to_boiler(f);
+        ot_send(CH_BOILER, out);
+        ev_push(EV_TO_BOILER, out);
+      }
       br_started_ms = millis();
       br_state = BR_WAIT_BOILER;
       break;
@@ -1067,6 +1235,7 @@ static void bridge_poll() {
     case BR_RESPOND:
       if ((int32_t) (millis() - br_due_ms) >= 0) {
         ot_send(CH_STAT, br_pending);
+        ev_push(EV_TO_STAT, br_pending);
         br_state = BR_IDLE;
       }
       break;
@@ -1077,8 +1246,20 @@ static void bridge_poll() {
         obs.boiler_alive = true;
         if (parity_ok(f)) {
           note_from_boiler(f);
-          ot_send(CH_STAT, substitute_to_thermostat(f));
+          ev_push(EV_FROM_BOILER, f);
+          // Was dit een antwoord op onze eigen vraag, dan heeft de thermostaat
+          // er niets op staan wachten. Wel doorsturen zou een antwoord zijn op
+          // een vraag die zij nooit stelde.
+          if (!br_ours) {
+            const uint32_t out = substitute_to_thermostat(f);
+            ot_send(CH_STAT, out);
+            ev_push(EV_TO_STAT, out);
+          }
         }
+        br_state = BR_IDLE;
+      } else if (br_ours && (millis() - br_started_ms) > BOILER_REPLY_TIMEOUT_MS) {
+        // Onze eigen vraag bleef onbeantwoord. Niemand wacht erop, dus gewoon
+        // door - de thermostaat hoeft hier niets van te merken.
         br_state = BR_IDLE;
       } else if ((millis() - br_started_ms) > BOILER_REPLY_TIMEOUT_MS) {
         // Geen antwoord van de ketel. NIET zwijgen: een OT-master die
@@ -1187,6 +1368,7 @@ void loop() {
   wdt_reset();
 
   bridge_poll();
+  ev_flush();
   link_poll();
   brake_update();
   lamp_update();

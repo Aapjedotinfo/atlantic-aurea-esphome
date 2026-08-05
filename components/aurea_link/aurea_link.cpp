@@ -21,23 +21,122 @@ void AureaLink::loop() {
     if (!this->read_byte(&b))
       break;
 
-    // Resynchroniseren op het startbyte. Een 0xF0 kan ook middenin de data
-    // voorkomen; de vaste lengte plus de optelsom vangen dat af.
-    if (this->idx_ == 0 && b != STATUS_START)
-      continue;
+    // Resynchroniseren op een startbyte. Er zijn er twee: het periodieke
+    // statusbericht en een los OpenTherm-frame. Welk van de twee bepaalt de
+    // lengte die we verwachten. Een 0xF0 of 0xF2 kan ook middenin de data
+    // opduiken; de vaste lengte plus de optelsom vangen dat af.
+    if (this->idx_ == 0) {
+      if (b == STATUS_START)
+        this->want_ = STATUS_LEN;
+      else if (b == EVENT_START)
+        this->want_ = EVENT_LEN;
+      else
+        continue;
+    }
 
     this->buf_[this->idx_++] = b;
-    if (this->idx_ < STATUS_LEN)
+    if (this->idx_ < this->want_)
       continue;
+
+    const uint8_t len = this->want_;
     this->idx_ = 0;
 
-    if (sum8_(this->buf_, STATUS_LEN - 1) != this->buf_[STATUS_LEN - 1]) {
+    if (sum8_(this->buf_, len - 1) != this->buf_[len - 1]) {
       this->bad_sum_++;
-      ESP_LOGW(TAG, "Statusbericht met verkeerde optelsom (%u tot nu toe)", this->bad_sum_);
+      ESP_LOGW(TAG, "Bericht met verkeerde optelsom (%u tot nu toe)", this->bad_sum_);
       continue;
     }
-    this->handle_status_(this->buf_);
+
+    if (len == STATUS_LEN)
+      this->handle_status_(this->buf_);
+    else
+      this->handle_event_(this->buf_);
   }
+}
+
+// Een rauw OpenTherm-frame zoals de brug het zag of stuurde.
+//
+//   bit 31     pariteit
+//   bit 30-28  berichttype
+//   bit 23-16  Data-ID
+//   bit 15-0   waarde
+//
+// We bewaren alleen de waarde, per Data-ID en per richting. Berichttype hoeft
+// niet: uit de richting volgt al of het een vraag of een antwoord was.
+void AureaLink::handle_event_(const uint8_t *b) {
+  const uint8_t dir = b[1];
+  if (dir > OT_TO_STAT)
+    return;
+
+  const uint32_t frame = ((uint32_t) b[2] << 24) | ((uint32_t) b[3] << 16) |
+                         ((uint32_t) b[4] << 8) | (uint32_t) b[5];
+  const uint8_t id = (uint8_t) (frame >> 16);
+  const uint8_t type = (uint8_t) ((frame >> 28) & 0x07);
+  const uint16_t val = (uint16_t) (frame & 0xFFFF);
+
+  // Een antwoord telt alleen als het er ook een is. Kent de ketel een Data-ID
+  // niet, dan komt er DATA-INVALID (6) of UNKNOWN-DATAID (7) terug met een leeg
+  // waardeveld. Dat klakkeloos opslaan levert een sensor op die keurig 0 meldt
+  // waar het antwoord in werkelijkheid "die vraag ken ik niet" is - en nul is
+  // een geloofwaardig getal, dus dat valt niet op.
+  //
+  // Vragen (van de thermostaat, en wat wij doorsturen) bewaren we wel altijd:
+  // daar IS het waardeveld de inhoud, bijvoorbeeld het setpoint in een
+  // Write-Data.
+  const bool is_reply = (dir == OT_FROM_BOILER || dir == OT_TO_STAT);
+  if (is_reply && type != 4 && type != 5) {
+    if (this->raw_debug_)
+      ESP_LOGD(TAG, "OT id=%3u afgewezen door de ketel (type %u)", id, type);
+    return;
+  }
+
+  if (this->ot_ms_[dir][id] == 0)
+    this->ids_seen_++;
+
+  this->ot_val_[dir][id] = val;
+  this->ot_ms_[dir][id] = millis();
+
+  if (this->raw_debug_)
+    ESP_LOGD(TAG, "OT %s id=%3u type=%u waarde=0x%04X",
+             dir == OT_FROM_STAT     ? "thermostaat->"
+             : dir == OT_FROM_BOILER ? "ketel->     "
+             : dir == OT_TO_BOILER   ? "  ->ketel   "
+                                     : "  ->thermost",
+             id, (unsigned) ((frame >> 28) & 0x07), val);
+}
+
+// f8.8: hoge byte is het hele getal met teken, lage byte is 1/256.
+static float f88_(uint16_t v) { return (float) ((int16_t) v) / 256.0f; }
+
+// Ouder dan dit en we noemen de waarde niet meer geldig. Een OT-master vraagt
+// de meeste Data-ID's ruim binnen een minuut opnieuw op.
+static const uint32_t OT_STALE_MS = 120000;
+
+float AureaLink::get_ot(int data_id, OtDirection dir) const {
+  if (data_id < 0 || data_id > 255)
+    return NAN;
+  const uint32_t t = this->ot_ms_[dir][data_id];
+  if (t == 0 || (millis() - t) > OT_STALE_MS)
+    return NAN;
+  return f88_(this->ot_val_[dir][data_id]);
+}
+
+int AureaLink::get_ot_raw(int data_id, OtDirection dir) const {
+  if (data_id < 0 || data_id > 255)
+    return -1;
+  const uint32_t t = this->ot_ms_[dir][data_id];
+  if (t == 0 || (millis() - t) > OT_STALE_MS)
+    return -1;
+  return this->ot_val_[dir][data_id];
+}
+
+int AureaLink::get_ot_age(int data_id, OtDirection dir) const {
+  if (data_id < 0 || data_id > 255)
+    return -1;
+  const uint32_t t = this->ot_ms_[dir][data_id];
+  if (t == 0)
+    return -1;
+  return (int) ((millis() - t) / 1000);
 }
 
 void AureaLink::handle_status_(const uint8_t *b) {
@@ -222,6 +321,59 @@ void AureaLink::set_demand_enabled(bool on) {
     return;
   this->demand_enabled_ = on;
   ESP_LOGI(TAG, "Ketelvraag-relais K3 %s", on ? "vrijgegeven" : "geblokkeerd");
+}
+
+// f8.8: hoge byte hele graden met teken, lage byte 1/256.
+uint16_t AureaLink::f88_from_(float v) {
+  if (std::isnan(v))
+    return 0;
+  if (v > 127.0f)
+    v = 127.0f;
+  if (v < -128.0f)
+    v = -128.0f;
+  return (uint16_t) ((int16_t) lroundf(v * 256.0f));
+}
+
+void AureaLink::send_inject_(uint8_t mode, uint32_t frame) {
+  uint8_t b[INJECT_LEN];
+  b[0] = INJECT_START;
+  b[1] = mode;
+  b[2] = (uint8_t) (frame >> 24);
+  b[3] = (uint8_t) (frame >> 16);
+  b[4] = (uint8_t) (frame >> 8);
+  b[5] = (uint8_t) frame;
+  b[6] = sum8_(b, INJECT_LEN - 1);
+  this->write_array(b, INJECT_LEN);
+}
+
+// Pariteitsbit zetten: OpenTherm wil een even aantal enen over het hele frame.
+static uint32_t with_parity_(uint32_t f) {
+  f &= 0x7FFFFFFFUL;
+  uint32_t x = f;
+  uint8_t ones = 0;
+  while (x) { ones = (uint8_t) (ones + (x & 1)); x >>= 1; }
+  return (ones & 1) ? (f | 0x80000000UL) : f;
+}
+
+void AureaLink::send_to_boiler(uint32_t frame) { this->send_inject_(0, with_parity_(frame)); }
+
+void AureaLink::write_boiler(uint8_t data_id, float value) {
+  const uint32_t f = (1UL << 28) | ((uint32_t) data_id << 16) | f88_from_(value);
+  ESP_LOGD(TAG, "Naar de ketel: schrijf ID %u = %.1f", data_id, value);
+  this->send_to_boiler(f);
+}
+
+void AureaLink::read_boiler(uint8_t data_id) {
+  this->send_to_boiler(((uint32_t) data_id << 16));
+}
+
+void AureaLink::override_to_thermostat(uint8_t data_id, float value) {
+  ESP_LOGD(TAG, "Naar de thermostaat: ID %u wordt %.1f", data_id, value);
+  this->send_inject_(1, ((uint32_t) data_id << 16) | f88_from_(value));
+}
+
+void AureaLink::clear_override(uint8_t data_id) {
+  this->send_inject_(2, ((uint32_t) data_id << 16));
 }
 
 void AureaLink::set_relay_follows_switch(bool on) {

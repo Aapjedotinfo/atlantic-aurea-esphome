@@ -57,6 +57,16 @@ gebruiken en die de resetvector verlegt.
 De programmer brandt de chip in zijn eigen ZIF-voet; er komt geen ISP-kabel en
 geen bootloader aan te pas. Daarna druk je hem in de IC2-voet van de controlbox.
 
+![Xgpro met de juiste fuses en een geslaagde burn](../docs/xgpro-programmeren.png)
+
+*Zo hoort het eruit te zien. Rechtsonder in **IC Config Information** staan de
+vier bytes die moeten kloppen: `0xFF` / `0xD9` / `0xFD` / `0xFF`. In het
+Extended Fuse Byte is alleen `BODLEVEL1` aangevinkt — dat is de brown-out op
+2,7 V. Onder **Lock Bit Byte** blijft alles leeg; `0xFF` betekent niets
+vergrendeld, en dat is wat je wilt. In de log zijn de twee regels die tellen
+`ID: 0x 1E 95 0F ......OK!` (je hebt de juiste chip) en `Verifying FLASH
+...Succeeded` (wat erin staat is wat je bedoelde).*
+
 De exacte bewoording verschilt per Xgpro-versie, maar de stappen zijn deze:
 
 1. **Chip plaatsen.** Hendel omhoog, chip erin met **pin 1 aan de kant van de
@@ -79,9 +89,16 @@ De exacte bewoording verschilt per Xgpro-versie, maar de stappen zijn deze:
    **controleer het resulterende hex-getal** voordat je verder gaat.
 
 5. **Programmeren.** De programmeerknop (*Prog*, of `P`) opent een venstertje met
-   aanvinkvakjes: wissen, blank check, programmeren, verifiëren en de config
-   meeschrijven. Laat **de config aangevinkt staan** — anders schrijf je wel de
-   firmware maar niet de fuses, en start de chip op de verkeerde klok.
+   aanvinkvakjes voor wat er geschreven wordt: FLASH, EEPROM, Config en LOCK
+   Bit. Laat **Config aangevinkt staan** — anders schrijf je wel de firmware
+   maar niet de fuses, en start de chip op de verkeerde klok.
+
+   > **LOCK Bit mag ook gewoon aan.** Dat vinkje zegt alleen *dat* de lockbyte
+   > geschreven wordt, niet wat erin komt; die waarde stel je in op het
+   > Config-tabblad en daar staat `0xFF` = niets vergrendeld. Vink onder **Lock
+   > Bit Byte** dus geen enkele bit aan. Zet je LB1 of LB2 wel aan, dan kun je
+   > de flash niet meer teruglezen om te controleren wat er in de chip zit — en
+   > dat wil je juist kunnen. Terugdraaien kan alleen met een chip erase.
 
 6. **Verifiëren.** Xgpro doet dat zelf als je het aan laat staan. Lees daarna
    voor de zekerheid de fuses terug en vergelijk ze met de tabel.

@@ -50,6 +50,35 @@ static const uint8_t STATUS_LEN = 24;
 static const uint8_t CMD_START = 0xF1;
 static const uint8_t CMD_LEN = 16;
 
+// ── Elk OpenTherm-frame, rauw doorgegeven ──
+//
+//   0  0xF2
+//   1  richting (zie hieronder)
+//   2-5 het frame, MSB eerst
+//   6  8-bits optelsom
+//
+// De AVR stuurt hier alles doorheen wat er over de bus gaat, in beide
+// richtingen, inclusief wat hij er zelf van maakt. Uitpakken doen wij, zodat
+// een nieuw Data-ID een OTA is en geen nieuwe burn.
+static const uint8_t EVENT_START = 0xF2;
+static const uint8_t EVENT_LEN = 7;
+
+// ── En terug: wij bepalen wat de brug verstuurt ──
+//
+//   0  0xF3
+//   1  modus (0 naar de ketel, 1 antwoord vervangen, 2 dat weer opheffen)
+//   2-5 het frame, MSB eerst
+//   6  8-bits optelsom
+static const uint8_t INJECT_START = 0xF3;
+static const uint8_t INJECT_LEN = 7;
+
+enum OtDirection : uint8_t {
+  OT_FROM_STAT = 0,    // de thermostaat vroeg dit
+  OT_FROM_BOILER = 1,  // de ketel antwoordde dit
+  OT_TO_BOILER = 2,    // dit stuurde de brug door naar de ketel
+  OT_TO_STAT = 3,      // dit antwoordde de brug de thermostaat
+};
+
 // Data-ID 0, hoge byte: wat de thermostaat wil.
 static const uint8_t MASTER_CH_ENABLE = 0x01;
 static const uint8_t MASTER_DHW_ENABLE = 0x02;
@@ -196,16 +225,70 @@ class AureaLink : public PollingComponent, public uart::UARTDevice {
   // Aanvoer en retour van de warmtepomp, door te geven aan de thermostaat.
   void set_wp_temps(float supply, float ret);
 
+  // ── Elk Data-ID dat over de bus is gekomen ──
+  //
+  // De brug stuurt elk frame rauw door, dus alles wat een thermostaat of ketel
+  // ooit noemt staat hier. Een nieuwe sensor toevoegen is een regel yaml:
+  //
+  //   lambda: 'return id(otlink)->get_ot(28);'   // retourtemperatuur
+  //
+  // Geeft NaN als dit Data-ID nog nooit langsgekomen is of te lang stil is.
+  // Standaard kijken we naar wat de KETEL antwoordde; dat is de bron voor
+  // vrijwel alles wat je wilt weten. Wil je zien wat de thermostaat vroeg, geef
+  // dan OT_FROM_STAT mee.
+  float get_ot(int data_id, OtDirection dir = OT_FROM_BOILER) const;
+  // Zonder f8.8-omrekening, voor Data-ID's die vlaggen of tellers dragen.
+  int get_ot_raw(int data_id, OtDirection dir = OT_FROM_BOILER) const;
+  // Hoe lang geleden dit Data-ID langskwam, in seconden. -1 = nooit gezien.
+  int get_ot_age(int data_id, OtDirection dir = OT_FROM_BOILER) const;
+  // Hoeveel verschillende Data-ID's we tot nu toe voorbij hebben zien komen.
+  int get_ot_ids_seen() const { return ids_seen_; }
+
+  // ── Zelf iets laten versturen ──
+  //
+  // Richting de KETEL zijn wij master, dus daar mogen we uit onszelf praten.
+  // De brug schuift dit frame in een gaatje tussen twee thermostaattransacties
+  // en houdt het antwoord voor zichzelf.
+  void send_to_boiler(uint32_t frame);
+  // Gemakshalve: een Write-Data met een temperatuur in f8.8.
+  void write_boiler(uint8_t data_id, float value);
+  // Read-Data, als je alleen wilt weten wat de ketel ergens van vindt.
+  void read_boiler(uint8_t data_id);
+
+  // Richting de THERMOSTAAT zijn wij slave en mag je niets uit jezelf sturen.
+  // Wat je daar wel kunt: haar antwoord vervangen. Vraagt ze dit Data-ID, dan
+  // krijgt ze deze waarde in plaats van die van de ketel. Acht tegelijk.
+  void override_to_thermostat(uint8_t data_id, float value);
+  void clear_override(uint8_t data_id);
+
+  // Zet de ruwe OT-log aan: elk frame dat langskomt verschijnt in de log met
+  // richting, Data-ID en waarde. Hangt aan dezelfde schakelaar als de
+  // frame-log van de warmtepomp.
+  void set_raw_debug(bool on) { raw_debug_ = on; }
+
  protected:
   void handle_status_(const uint8_t *b);
+  void handle_event_(const uint8_t *b);
+  void send_inject_(uint8_t mode, uint32_t frame);
+  static uint16_t f88_from_(float v);
   static uint8_t sum8_(const uint8_t *p, uint8_t n);
   float tenths_(int16_t v) const { return have_data_ ? v / 10.0f : NAN; }
 
   static const uint32_t LINK_TIMEOUT_MS = 15000;
 
-  // Ontvangst
+  // Ontvangst. De buffer is zo groot als het langste bericht; welk bericht het
+  // is blijkt uit het startbyte, en dat bepaalt de verwachte lengte.
   uint8_t buf_[STATUS_LEN];
   uint8_t idx_{0};
+  uint8_t want_{0};
+
+  // Wat er over de bus kwam, per Data-ID en per richting. Vier richtingen x
+  // 256 ID's is 4 kB aan tabellen - op een ESP32 met honderden kB vrij is dat
+  // niets, en het bespaart je een burn per sensor die je later bedenkt.
+  uint16_t ot_val_[4][256]{};
+  uint32_t ot_ms_[4][256]{};
+  uint16_t ids_seen_{0};
+  bool raw_debug_{false};
   uint32_t last_rx_ms_{0};
   bool have_data_{false};
 

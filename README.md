@@ -12,7 +12,7 @@ een DIP28-voet. **Dit project vervangt ze allebei**:
 Je zegt vanuit Home Assistant *"geef me X °C aanvoer"* en de controller kiest zelf
 de stand. De CV-ketel hoeft daarnaast niet meer los aangestuurd te worden: de
 brug in IC2 zit tussen je thermostaat en je ketel in, dus je kunt de ketel
-**afremmen** zolang de warmtepomp het alleen aankan — zonder de thermostaat te
+**blokkeren** zolang de warmtepomp het alleen aankan — zonder de thermostaat te
 misleiden en zonder draden te verleggen.
 
 **Status: werkend op echte hardware.** Beide kanten van de OpenTherm-brug
@@ -24,12 +24,13 @@ telegrammen CRC-geldig, en de buitenunit reageert op de gestuurde stand.
 
 ---
 
-## Twee configuraties: kies er één
+## De IC2-kant is optioneel
 
-De IC2-kant is optioneel. Er staan twee yaml-bestanden klaar en je flasht er één
-van:
+`aurea-wp.yaml` is de volledige opzet. Wil je alleen de warmtepomp en laat je de
+IC2-voet leeg, dan ligt er een uitgeklede variant klaar als
+[`aurea-wp-minimaal.yaml.example`](aurea-wp-minimaal.yaml.example):
 
-| | `aurea-wp-minimaal.yaml` | `aurea-wp.yaml` |
+| | minimaal | volledig |
 |---|---|---|
 | ESP32 in IC1 | ✅ | ✅ |
 | Eigen chip in IC2 | — (voet blijft leeg) | ✅ ATmega328P |
@@ -37,28 +38,26 @@ van:
 | Thermostaat & CV-ketel | los aansturen, zoals voorheen | via de OpenTherm-brug |
 | Extra bedrading | alleen GPIO16/17 | + een deler op GPIO19 |
 
-**Begin met de minimale.** Daarmee heb je de warmtepomp compleet in Home
+Gebruik hem door hem over `aurea-wp.yaml` heen te kopiëren:
+
+```bash
+cp aurea-wp-minimaal.yaml.example aurea-wp.yaml
+```
+
+**Handig om mee te beginnen.** Daarmee heb je de warmtepomp compleet in Home
 Assistant en weet je zeker dat je bedrading klopt, vóórdat je een chip gaat
-branden. Het is ook de configuratie waar je op terugvalt als er iets mis is met
-de brug: de warmtepomp blijft dan gewoon draaien.
+branden. Het is ook waar je op terugvalt als er iets mis is met de brug: de
+warmtepomp blijft dan gewoon draaien.
 
-Overstappen is later niets meer dan de andere yaml flashen. De apparaatnaam
-blijft `aurea-wp`, dus Home Assistant houdt het apparaat en de geschiedenis van
-alle sensoren die in beide bestanden zitten — je krijgt er alleen de
+Terug naar de volledige opzet is `git checkout aurea-wp.yaml`, gevolgd door
+**`esphome clean aurea-wp.yaml`** — ESPHome kiest zijn bouwmap op de
+apparaatnaam, dus de bouwmap van de vorige variant blijft anders staan en je
+krijgt een linkfout over ontbrekende `aurea_link`-symbolen.
+
+De apparaatnaam blijft in beide gevallen `aurea-wp`. Dat is bewust: Home
+Assistant houdt daarmee het apparaat en de geschiedenis van alle sensoren die in
+beide varianten zitten, en je krijgt er bij de volledige opzet alleen de
 thermostaat- en ketelentiteiten bij.
-
-> **Wel eerst opruimen bij het wisselen.** ESPHome kiest zijn bouwmap op de
-> apparaatnaam, en die is in beide bestanden gelijk. Wissel je van de ene yaml
-> naar de andere, dan blijft de bouwmap van de vorige staan en krijg je een
-> linkfout over ontbrekende `aurea_link`-symbolen. Eenmalig:
->
-> ```bash
-> esphome clean aurea-wp.yaml
-> ```
->
-> Daarna bouwt hij gewoon. Dit is de prijs van dezelfde naam houden, en die is
-> het waard: een andere naam kost je het apparaat en alle geschiedenis in Home
-> Assistant.
 
 ## Wat je nodig hebt
 
@@ -69,7 +68,7 @@ juiste pinnen vrij werkt. Zie [WIRING.md](WIRING.md).
 
 ### Voor IC2 — de OpenTherm-brug *(optioneel)*
 
-Sla dit over als je `aurea-wp-minimaal.yaml` draait.
+Sla dit over als je de minimale opzet draait.
 
 Een **ATmega328P-PU in DIP-28**. Dat is dezelfde behuizing als de originele
 ATmega8, dus hij past rechtstreeks in de bestaande voet.
@@ -124,7 +123,7 @@ Hij zit **tussen** de thermostaat en de ketel en geeft het OpenTherm-gesprek
 letterlijk door, met een paar uitzonderingen die je vanuit Home Assistant
 bedient:
 
-- **De rem.** Aan = de ketel krijgt een setpoint van 10 °C opgelegd en houdt zich
+- **De bijstook blokkeren.** Aan = de ketel krijgt een setpoint van 10 °C opgelegd en houdt zich
   koest, terwijl de thermostaat gewoon zijn eigen gesprek blijft voeren. De ketel
   wordt dus nooit "uitgezet": tapwater, storingen en diagnostiek blijven werken.
   De AVR houdt zelf een minimale aan- en uittijd van vijf minuten aan zodat er
@@ -265,9 +264,9 @@ Assistant zie je dezelfde namen.
 | **Warmtepomp** | Setpoint aanvoer, Modus, Systeem, Handmatige stand, Aanvoer, Retour, Delta T, Buiten, Stand, Vermogen, Compressor, Actief |
 | **Thermostaat** | Kamertemperatuur, Gewenste kamertemperatuur, Warmtevraag, Tapwatervraag, Thermostaat op afstand, Verbonden |
 | **CV-ketel** | Keteltemperatuur, Ketelmodulatie, Gevraagd ketelsetpoint, CV actief, Tapwater actief, Vlam, Ketelstoring, Verbonden, Ketel setpoint (rechtstreeks) |
-| **Bijstookbeleid** | Ketel remmen, Rem actief, Rem-setpoint, Ketel overslaan, Meld warmtelevering, WP-temperaturen tonen |
-| **Instellingen** | Koelen, Stap-interval, Statuslampje, Ketelvraag-relais vrijgeven |
-| **Diagnose** | Brug verbonden, Brug herstarts, Brug gemiste berichten, Communicatie, Noodbrug aangetrokken, Ketelvraag-relais K3, Dipswitch keteltype, Debug frames |
+| **Bijstookbeleid** | Bijstook blokkeren, Bijstook geblokkeerd, Ketelsetpoint in rust, Ketel overslaan, Meld warmtelevering, WP-temperaturen tonen |
+| **Instellingen** | Koelen, Stap-interval, Statuslampje |
+| **Diagnose** | Brug verbonden, Brug herstarts, Brug gemiste berichten, Communicatie, Noodbrug aangetrokken, Keteltype (dipswitch), Debug frames |
 | **Apparaat** | Restart, Uptime, WiFi Signal |
 
 Twee dingen om te weten over **Diagnose**:
@@ -285,8 +284,8 @@ stand 0.
 
 ```
 aurea-wp-666/
-├── aurea-wp.yaml           volledige opzet: warmtepomp + OpenTherm-brug
-├── aurea-wp-minimaal.yaml  alleen de warmtepomp, IC2-voet leeg
+├── aurea-wp.yaml                    volledige opzet: warmtepomp + brug
+├── aurea-wp-minimaal.yaml.example   alleen de warmtepomp, IC2-voet leeg
 ├── secrets.yaml.example    kopieer naar secrets.yaml en vul in
 ├── WIRING.md               bedrading + ASCII-schema
 ├── components/
@@ -313,11 +312,11 @@ kunnen OTA flashen, maar ze weten niets van elkaars wijzigingen.
 git clone https://github.com/Aapjedotinfo/atlantic-aurea-esphome
 cd atlantic-aurea-esphome
 cp secrets.yaml.example secrets.yaml   # wifi + api-sleutel invullen
-esphome run aurea-wp-minimaal.yaml     # eerste keer via USB, daarna OTA
+esphome run aurea-wp.yaml              # eerste keer via USB, daarna OTA
 ```
 
-Draait dat, en zit er een gebrande 328P in de IC2-voet? Dan
-`esphome run aurea-wp.yaml` en je hebt de brug erbij.
+Nog geen chip in de IC2-voet? Kopieer dan eerst
+`aurea-wp-minimaal.yaml.example` over `aurea-wp.yaml` heen.
 
 ### B. In de Home Assistant ESPHome Device Builder
 
@@ -326,8 +325,9 @@ repo gehaald, dus alles kan in de webinterface.
 
 1. **+ NEW DEVICE** → naam `aurea-wp` → ESP32 → *Skip* bij het installeren.
 2. Klik **EDIT** en vervang de gegenereerde inhoud door die van
-   [`aurea-wp-minimaal.yaml`](aurea-wp-minimaal.yaml) of
-   [`aurea-wp.yaml`](aurea-wp.yaml). Wissel daarin het
+   [`aurea-wp.yaml`](aurea-wp.yaml) &mdash; of van
+   [`aurea-wp-minimaal.yaml.example`](aurea-wp-minimaal.yaml.example) als je
+   de IC2-voet leeg laat. Wissel daarin het
    `external_components`-blok voor:
 
    ```yaml

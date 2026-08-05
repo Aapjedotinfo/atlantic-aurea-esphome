@@ -1,19 +1,29 @@
 # ═══════════════════════════════════════════════════════════════════════════
-#  Aurea WP - MINIMALE OPSTELLING
+#  Aurea WP - MINIMALE OPSTELLING (voorbeeld)
 #
 #  Alleen een ESP32 in de IC1-socket. De IC2-socket blijft leeg: geen eigen
 #  ATmega328P, geen OpenTherm-brug. De warmtepomp doet alles wat hij in de
 #  volledige opstelling ook doet; je CV-ketel stuur je los aan, zoals voorheen.
 #
-#  Kies deze als:
+#  GEBRUIK: kopieer dit bestand over aurea-wp.yaml heen.
+#
+#      cp aurea-wp-minimaal.yaml.example aurea-wp.yaml
+#      esphome run aurea-wp.yaml
+#
+#  Zo blijft er altijd precies een actieve config met die naam, en dat is wat je
+#  wilt: ESPHome kiest zijn bouwmap op de apparaatnaam. Twee bestanden die
+#  allebei `aurea-wp` heten delen die map, en dan struikelt de ene build over de
+#  resten van de andere.
+#
+#  Kies deze opzet als:
 #   - je nog geen 328P hebt gebrand, of er nog niet aan toe bent;
 #   - je helemaal geen CV-ketel aan de controlbox hebt hangen;
 #   - er iets mis is met de brug en je de warmtepomp toch wilt laten draaien.
 #
-#  Overstappen naar de volledige opstelling is later gewoon een andere yaml
-#  flashen: de naam blijft `aurea-wp`, dus Home Assistant houdt het apparaat en
-#  de geschiedenis van alle sensoren die in beide bestanden voorkomen. Je krijgt
-#  er dan de thermostaat- en ketelentiteiten bij.
+#  Terug naar de volledige opzet is `git checkout aurea-wp.yaml` gevolgd door
+#  `esphome clean aurea-wp.yaml`. De apparaatnaam blijft gelijk, dus Home
+#  Assistant houdt het apparaat en de geschiedenis van alle sensoren die in
+#  beide voorkomen; je krijgt er de thermostaat- en ketelentiteiten bij.
 #
 #  Bedrading: zie WIRING.md. Voor deze opstelling heb je alleen GPIO16/17 en de
 #  voeding nodig - de deler op GPIO19 mag je overslaan.

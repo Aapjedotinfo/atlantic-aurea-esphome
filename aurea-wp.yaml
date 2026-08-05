@@ -71,6 +71,28 @@ aurea_link:
 # tonen wanneer de ketel koud staat. Alleen zinvol als de ketel het opgewarmde
 # water niet zelf al meet - zie docs/volledige-controlbox.md.
 interval:
+  # De buitentemperatuur van de warmtepomp doorgeven, beide kanten op.
+  #
+  # Richting de KETEL is dat een Write-Data ID 27: heeft hij een eigen
+  # stooklijn, dan kan hij die er nu op baseren zonder dat er een buitenvoeler
+  # aan hangt. Niet elke ketel accepteert dit; zet "Debug frames" aan en kijk
+  # of er een Write-Ack terugkomt of een afwijzing.
+  #
+  # Richting de THERMOSTAAT kan het niet met een frame, want daar is de brug
+  # slave. Daar zetten we een antwoord klaar: vraagt zij ID 27, dan krijgt ze
+  # onze waarde. Dat is wat een OpenTherm-gateway ook doet.
+  #
+  # Elke minuut is ruim voldoende - buitenlucht beweegt niet sneller, en elke
+  # injectie kost de thermostaat in het slechtste geval 400 ms wachten.
+  - interval: 60s
+    then:
+      - lambda: |-
+          const float buiten = id(wp)->get_outside();
+          if (!std::isnan(buiten)) {
+            id(otlink)->write_boiler(27, buiten);
+            id(otlink)->override_to_thermostat(27, buiten);
+          }
+
   - interval: 5s
     then:
       - lambda: |-
@@ -250,7 +272,13 @@ number:
     step: 1
     initial_value: 0
     optimistic: true
-    restore_value: true
+    # NIET bewaren over een herstart. Dit is het enige pad waarlangs de brug de
+    # ketel uit zichzelf laat stoken: zonder thermostaat op de lijn stuurt de
+    # AVR dit setpoint met de CV-vlag naar de ketel. Een waarde die een
+    # stroomstoring overleeft zou dat ongevraagd doen, en dan stookt je ketel
+    # omdat je hier ooit iets hebt uitgeprobeerd. Zelfde reden als waarom
+    # "Systeem" na een herstart uit staat.
+    restore_value: false
     unit_of_measurement: "C"
     mode: box
     icon: mdi:water-boiler
@@ -361,9 +389,13 @@ switch:
     entity_category: config
     icon: mdi:bug
     turn_on_action:
-      - lambda: 'id(wp)->set_raw_debug(true);'
+      - lambda: |-
+          id(wp)->set_raw_debug(true);
+          id(otlink)->set_raw_debug(true);
     turn_off_action:
-      - lambda: 'id(wp)->set_raw_debug(false);'
+      - lambda: |-
+          id(wp)->set_raw_debug(false);
+          id(otlink)->set_raw_debug(false);
     web_server:
       sorting_group_id: grp_diag
       sorting_weight: 8
@@ -666,6 +698,88 @@ sensor:
     web_server:
       sorting_group_id: grp_ketel
       sorting_weight: 1
+
+  # ── Alles wat de brug ziet langskomen ──
+  #
+  # Vanaf hier komen de waarden niet uit het samengevatte statusbericht maar
+  # rechtstreeks uit de OpenTherm-frames die de brug doorstuurt. Een Data-ID
+  # erbij is dus een regel yaml en een OTA - geen nieuwe burn.
+  #
+  # De nummers komen uit de OpenTherm-specificatie:
+  #   25 aanvoertemperatuur ketel     28 retourtemperatuur ketel
+  #   26 tapwatertemperatuur          27 buitentemperatuur (ketelvoeler)
+  #   17 relatieve modulatie          18 waterdruk CV
+
+  - platform: template
+    name: "Ketelretour"
+    lambda: 'return id(otlink)->get_ot(28);'
+    update_interval: 10s
+    unit_of_measurement: "°C"
+    device_class: temperature
+    state_class: measurement
+    accuracy_decimals: 1
+    icon: mdi:water-boiler
+    web_server:
+      sorting_group_id: grp_ketel
+      sorting_weight: 2
+
+  # Aanvoer min retour van de ketel. Zegt hoeveel warmte hij werkelijk aan het
+  # water afgeeft - bij een stilstaande ketel loopt dit naar nul.
+  - platform: template
+    name: "Ketel delta T"
+    lambda: |-
+      const float aanvoer = id(otlink)->get_ot(25);
+      const float retour  = id(otlink)->get_ot(28);
+      if (std::isnan(aanvoer) || std::isnan(retour)) return NAN;
+      return aanvoer - retour;
+    update_interval: 10s
+    unit_of_measurement: "°C"
+    state_class: measurement
+    accuracy_decimals: 1
+    icon: mdi:delta
+    web_server:
+      sorting_group_id: grp_ketel
+      sorting_weight: 3
+
+  - platform: template
+    name: "Waterdruk CV"
+    lambda: 'return id(otlink)->get_ot(18);'
+    update_interval: 60s
+    unit_of_measurement: "bar"
+    device_class: pressure
+    state_class: measurement
+    accuracy_decimals: 1
+    icon: mdi:gauge-low
+    web_server:
+      sorting_group_id: grp_ketel
+      sorting_weight: 10
+
+  - platform: template
+    name: "Tapwatertemperatuur"
+    lambda: 'return id(otlink)->get_ot(26);'
+    update_interval: 30s
+    unit_of_measurement: "°C"
+    device_class: temperature
+    state_class: measurement
+    accuracy_decimals: 1
+    icon: mdi:water-thermometer
+    web_server:
+      sorting_group_id: grp_ketel
+      sorting_weight: 11
+
+  # Hoeveel verschillende Data-ID's er tot nu toe voorbij zijn gekomen. Loopt
+  # dit op na een herstart, dan draagt de link echt frames over. Blijft het op
+  # nul, dan komt er niets door en heeft geen enkele sensor hierboven zin.
+  - platform: template
+    name: "OT Data-ID's gezien"
+    lambda: 'return id(otlink)->get_ot_ids_seen();'
+    update_interval: 30s
+    accuracy_decimals: 0
+    entity_category: diagnostic
+    icon: mdi:format-list-numbered
+    web_server:
+      sorting_group_id: grp_diag
+      sorting_weight: 5
 
   - platform: template
     name: "Ketelmodulatie"
