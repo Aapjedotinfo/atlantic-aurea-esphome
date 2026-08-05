@@ -902,6 +902,13 @@ static uint32_t    br_pending;      // klaarstaand antwoord voor de thermostaat
 static uint32_t    br_request;      // de vraag die we naar de ketel doorgaven
 static uint32_t    br_due_ms;
 static uint32_t    br_poll_ms;      // eigen poll richting de ketel
+static uint32_t    br_retry_ms;     // laatste hertest van een dood gewaande ketel
+
+// Hoe vaak we een ketel die niet antwoordt opnieuw proberen, terwijl er wel
+// een thermostaat praat. Elke poging kost die ene vraag BOILER_REPLY_TIMEOUT_MS
+// extra, dus niet te vaak; maar een ketel die terugkomt moet ook niet minuten
+// onopgemerkt blijven.
+static const uint32_t BOILER_RETRY_MS = 10000;
 
 // Een OpenTherm-master hoort minstens elke seconde iets te sturen, anders valt
 // de slave in storing. Zolang we alleen doorgaven, stopte de ketel dus zodra de
@@ -1027,13 +1034,30 @@ static void bridge_poll() {
       if (!parity_ok(f)) { if (parity_fails < 15) parity_fails++; break; }
       note_from_thermostat(f);
 
-      if (!obs.boiler_alive || policy.force_standalone) {
-        // Geen ketel: zelf antwoorden, anders blijft de thermostaat hangen.
+      // Zelf antwoorden als de ketel weg is - anders blijft de thermostaat
+      // hangen. Maar NIET voorgoed.
+      //
+      // Hier zat een grendel. De ketel wordt alleen "levend" door een antwoord,
+      // en een antwoord komt alleen op een vraag. Ging obs.boiler_alive een
+      // keer uit terwijl er een thermostaat hing, dan nam deze tak voortaan
+      // elke beurt over en werd er nooit meer iets naar de ketel gestuurd. De
+      // eigen poll verderop zit achter !obs.stat_alive, dus die sprong ook niet
+      // bij. Resultaat: "Ketel verbonden" bleef uit tot de AVR opnieuw startte,
+      // ook als de ketel er allang weer was.
+      //
+      // Nu proberen we het elke BOILER_RETRY_MS gewoon opnieuw, door een echte
+      // vraag van de thermostaat door te geven. Antwoordt de ketel, dan staat
+      // hij meteen weer aan; antwoordt hij niet, dan vangt de time-out in
+      // BR_WAIT_BOILER dat af en krijgt de thermostaat alsnog antwoord.
+      if (policy.force_standalone ||
+          (!obs.boiler_alive &&
+           (millis() - br_retry_ms) < BOILER_RETRY_MS)) {
         br_pending = standalone_reply(f);
         br_due_ms  = millis() + SLAVE_REPLY_DELAY_MS;
         br_state   = BR_RESPOND;
         break;
       }
+      if (!obs.boiler_alive) br_retry_ms = millis();
 
       br_request = f;
       ot_send(CH_BOILER, substitute_to_boiler(f));

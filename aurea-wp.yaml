@@ -65,7 +65,7 @@ aurea_link:
   id: otlink
   uart_id: avr_uart
   update_interval: 2s
-  brake_setpoint: 10   # wat de rem de ketel oplegt; ook Atlantic's waarde
+  brake_setpoint: 10   # ketelsetpoint bij geblokkeerde bijstook; Atlantic's waarde
 
 # De warmtepomptemperaturen doorgeven zodat de AVR ze aan de thermostaat kan
 # tonen wanneer de ketel koud staat. Alleen zinvol als de ketel het opgewarmde
@@ -206,10 +206,11 @@ number:
       sorting_group_id: grp_instellingen
       sorting_weight: 2
 
-  # Wat de rem de ketel oplegt. 10 °C houdt hem koud - dat is de waarde die
-  # Atlantic zelf ook schreef. Hoger zetten laat hem gedeeltelijk meestoken.
+  # Wat de ketel krijgt opgelegd zolang de bijstook geblokkeerd is. 10 °C houdt
+  # hem koud - dat is de waarde die Atlantic zelf ook schreef. Hoger zetten laat
+  # hem gedeeltelijk meestoken.
   - platform: template
-    name: "Rem-setpoint ketel"
+    name: "Ketelsetpoint in rust"
     id: n_brake_setpoint
     min_value: 0
     max_value: 80
@@ -402,19 +403,20 @@ switch:
       sorting_group_id: grp_beleid
       sorting_weight: 4
 
-  # DE REM. Aan = de ketel krijgt een setpoint van 10 °C opgelegd en houdt
-  # zich koest; uit = de vraag van de thermostaat gaat ongewijzigd door.
-  # De ketel wordt dus nooit "uitgezet", je zegt alleen dat hij niets hoeft
-  # te leveren - tapwater, storingen en diagnostiek blijven gewoon werken.
+  # DE BIJSTOOK BLOKKEREN. Aan = de ketel krijgt het lage setpoint hierboven
+  # opgelegd en houdt zich koest; uit = de vraag van de thermostaat gaat
+  # ongewijzigd door. De ketel wordt dus nooit "uitgezet", je zegt alleen dat
+  # hij niets hoeft te leveren - tapwater, storingen en diagnostiek blijven
+  # gewoon werken.
   #
   # De AVR houdt zelf een minimale aan- en uittijd van 5 minuten aan, zodat
   # de ketel niet gaat pendelen als het beleid hapert.
   - platform: template
-    name: "Ketel remmen"
+    name: "Bijstook blokkeren"
     id: sw_brake
     optimistic: true
     restore_mode: ALWAYS_OFF
-    icon: mdi:hand-back-left
+    icon: mdi:fire-off
     turn_on_action:
       - lambda: 'id(otlink)->set_brake(true);'
     turn_off_action:
@@ -473,25 +475,36 @@ switch:
   #   turn_off_action:
   #     - lambda: 'id(otlink)->set_test_out(0x08, false);'
 
-  # ── De relais ──
+  # ── K3, het aan/uit-ketelcontact: uitgeschakeld ──
   #
-  # K3 is een droog contact van 10 A waarmee je een AAN/UIT-ketel aanzet. Laat
-  # dit uit bij een OpenTherm-ketel: K3 deelt zijn voorschakelweerstand met de
-  # noodbrug, en samen aan zakt de spoelspanning zo ver in dat er niets meer
-  # betrouwbaar aantrekt. De AVR blokkeert die combinatie ook zelf.
-  - platform: template
-    name: "Ketelvraag-relais vrijgeven"
-    optimistic: true
-    restore_mode: ALWAYS_OFF
-    entity_category: config
-    icon: mdi:electric-switch-closed
-    turn_on_action:
-      - lambda: 'id(otlink)->set_demand_enabled(true);'
-    turn_off_action:
-      - lambda: 'id(otlink)->set_demand_enabled(false);'
-    web_server:
-      sorting_group_id: grp_instellingen
-      sorting_weight: 4
+  # K3 is een droog contact van 10 A waarmee je een ouderwetse AAN/UIT-ketel
+  # aanzet - Atlantic's tweede keteltype. Dit is geen losse aan/uit maar een
+  # vrijgave: staat hij aan, dan bedient de AVR K3 voortaan zelf zodra het
+  # ketelsetpoint boven de 20 graden komt, net als het origineel.
+  #
+  # Met een OpenTherm-ketel wil je dat nooit. De warmtevraag loopt dan via het
+  # protocol, en K3 deelt bovendien zijn voorschakelweerstand met de noodbrug:
+  # samen aan zakt de spoelspanning zo ver in dat er niets meer betrouwbaar
+  # aantrekt, inclusief die noodbrug. De AVR blokkeert die combinatie ook zelf,
+  # maar zonder deze schakelaar komt het probleem al niet in de buurt.
+  #
+  # policy.demand_enabled staat in de AVR op false zolang wij het bit niet
+  # zetten, dus hiermee weg blijft K3 gewoon af. Terugzetten voor wie wel een
+  # aan/uit-ketel heeft:
+  #
+  # - platform: template
+  #   name: "Ketelvraag-relais vrijgeven"
+  #   optimistic: true
+  #   restore_mode: ALWAYS_OFF
+  #   entity_category: config
+  #   icon: mdi:electric-switch-closed
+  #   turn_on_action:
+  #     - lambda: 'id(otlink)->set_demand_enabled(true);'
+  #   turn_off_action:
+  #     - lambda: 'id(otlink)->set_demand_enabled(false);'
+  #   web_server:
+  #     sorting_group_id: grp_instellingen
+  #     sorting_weight: 4
 
   # ── De noodbrug met de hand bedienen: uitgeschakeld ──
   #
@@ -648,7 +661,8 @@ sensor:
       sorting_group_id: grp_thermostaat
       sorting_weight: 2
 
-  # Wat de thermostaat vraagt VOOR de rem. Hiermee zie je hoeveel warmte er
+  # Wat de thermostaat vraagt VOORDAT de blokkade eroverheen gaat. Hiermee zie
+  # je hoeveel warmte er
   # werkelijk gevraagd wordt, ook terwijl je de ketel tegenhoudt - de basis
   # voor de beslissing of de warmtepomp het alleen aankan.
   - platform: template
@@ -806,29 +820,31 @@ binary_sensor:
       sorting_weight: 7
 
   - platform: template
-    name: "Rem actief"
+    name: "Bijstook geblokkeerd"
     lambda: 'return id(otlink)->get_brake_active();'
-    icon: mdi:hand-back-left
+    icon: mdi:fire-off
     entity_category: diagnostic
     web_server:
       sorting_group_id: grp_beleid
       sorting_weight: 2
 
   # ── Link-diagnose ──
-  # In de controlbox is dit je enige venster op de AVR: geen seriële monitor,
-  # geen LED. Valt "AVR-link" weg, dan valt de brug zelf terug op ongewijzigd
-  # doorgeven en blijft het huis warm - maar dan weet je het tenminste.
+  # In de controlbox is dit je enige venster op de brug: geen seriële monitor,
+  # geen LED. Valt "Brug verbonden" weg, dan valt de brug zelf terug op
+  # ongewijzigd doorgeven en blijft het huis warm - maar dan weet je het.
 
-  # Socket-pin 28: de aan/uit-warmtevraag van het origineel, hoog vanaf een
-  # setpoint van 20 graden. Loopt mee met de rem.
-  - platform: template
-    name: "Ketelvraag-relais K3"
-    lambda: 'return id(otlink)->get_demand_out();'
-    entity_category: diagnostic
-    icon: mdi:radiator
-    web_server:
-      sorting_group_id: grp_diag
-      sorting_weight: 6
+  # Weg met de vrijgave hierboven: zonder die schakelaar kan K3 nooit
+  # aantrekken, dus deze sensor zou permanent op uit staan. Terugzetten als je
+  # de vrijgave terugzet:
+  #
+  # - platform: template
+  #   name: "Ketelvraag-relais K3"
+  #   lambda: 'return id(otlink)->get_demand_out();'
+  #   entity_category: diagnostic
+  #   icon: mdi:radiator
+  #   web_server:
+  #     sorting_group_id: grp_diag
+  #     sorting_weight: 6
 
   - platform: template
     name: "Noodbrug aangetrokken"
