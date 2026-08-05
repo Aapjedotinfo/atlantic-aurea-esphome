@@ -157,7 +157,12 @@ interval:
 
           // De thermostaat de WP-temperaturen tonen, anders ziet zij een koude
           // ketel en schroeft ze haar vraag op - precies wat we niet willen.
-          id(otlink)->set_subst_temp(true);
+          //
+          // Via de SCHAKELAAR, niet rechtstreeks naar het component. Anders
+          // staat de substitutie aan terwijl de knop in de interface uit zegt,
+          // en dan liegt je bediening tegen je. Zelfde reden als bij sw_brake
+          // hierboven.
+          if (!id(sw_subst)->state) id(sw_subst)->turn_on();
 
           // ── Schiet de pomp tekort? ──
           // Twee redenen: de vraag ligt boven wat we hem toestaan, of hij draait
@@ -472,21 +477,19 @@ number:
       sorting_group_id: grp_beleid
       sorting_weight: 13
 
-  # DE THERMOSTAAT OP AFSTAND ZETTEN.
-  # Data-ID 9 gaat van slave naar master, dus de brug kan de thermostaat een
-  # kamersetpoint opdringen - precies zoals de bekende OpenTherm-gateway doet.
-  # Dat werkt ongeacht welk merk er hangt, dus je hebt er geen Plugwise- of
-  # merkintegratie voor nodig.
-  #
-  # Op 0 zetten heft de override op en laat de thermostaat weer zelf regelen.
-  # DE KETEL RECHTSTREEKS AANSTUREN, zonder thermostaat ertussen.
+  # DE KETEL AANSTUREN ZONDER THERMOSTAAT.
   # De brug is dan zelf de OpenTherm-master: hij schrijft dit setpoint naar
   # Data-ID 1 en zet de CV-vlag in Data-ID 0.
   #
-  # Werkt alleen zolang er geen thermostaat meepraat - die heeft altijd
-  # voorrang, want doorgeven gaat voor verzinnen. Op 0 zetten is uit.
+  # Zoals de naam zegt werkt dit alleen zolang er GEEN thermostaat meepraat.
+  # Hangt er wel een, dan heeft die altijd voorrang - doorgeven gaat voor
+  # verzinnen - en gebeurt hier niets. Wil je de ketel sturen terwijl er een
+  # thermostaat hangt, gebruik dan "Bijstook blokkeren" met "Ketelsetpoint in
+  # rust": dat vervangt Data-ID 1 onderweg en werkt wel.
+  #
+  # Op 0 zetten is uit.
   - platform: template
-    name: "Ketel setpoint (rechtstreeks)"
+    name: "Ketelsetpoint zonder thermostaat"
     id: n_boiler_setpoint
     min_value: 0
     max_value: 80
@@ -510,6 +513,13 @@ number:
       sorting_group_id: grp_ketel
       sorting_weight: 9
 
+  # DE THERMOSTAAT OP AFSTAND ZETTEN.
+  # Data-ID 9 gaat van slave naar master, dus de brug kan de thermostaat een
+  # kamersetpoint opdringen - precies zoals de bekende OpenTherm-gateway doet.
+  # Dat werkt ongeacht welk merk er hangt, dus je hebt er geen Plugwise- of
+  # merkintegratie voor nodig.
+  #
+  # Op 0 zetten heft de override op en laat de thermostaat weer zelf regelen.
   - platform: template
     name: "Thermostaat op afstand"
     id: n_override
@@ -629,38 +639,43 @@ switch:
 
   # ── De brug naar thermostaat en ketel ──
 
-  # Wat de brug de thermostaat vertelt zolang er geen ketel meepraat. De vlam-
-  # vlag staat hier voor "de warmtepomp levert daadwerkelijk" - alleen de ESP32
-  # weet of de compressor draait, dus die bepaalt het.
-  - platform: template
-    name: "Meld warmtelevering aan thermostaat"
-    optimistic: true
-    restore_mode: RESTORE_DEFAULT_ON
-    entity_category: config
-    icon: mdi:heat-wave
-    turn_on_action:
-      - lambda: 'id(otlink)->set_standalone_flame(true);'
-    turn_off_action:
-      - lambda: 'id(otlink)->set_standalone_flame(false);'
-    web_server:
-      sorting_group_id: grp_beleid
-      sorting_weight: 5
-
-  # Zelf antwoorden ook als de ketel wel meepraat. Handig om de ketel volledig
-  # buiten spel te zetten zonder draden los te trekken.
-  - platform: template
-    name: "Ketel overslaan"
-    optimistic: true
-    restore_mode: ALWAYS_OFF
-    entity_category: config
-    icon: mdi:debug-step-over
-    turn_on_action:
-      - lambda: 'id(otlink)->set_force_standalone(true);'
-    turn_off_action:
-      - lambda: 'id(otlink)->set_force_standalone(false);'
-    web_server:
-      sorting_group_id: grp_beleid
-      sorting_weight: 4
+  # ── Twee schakelaars die hier niet thuishoren ──
+  #
+  # "Ketel overslaan" liet de brug zelf antwoorden terwijl de ketel er gewoon
+  # was. Dat is een testknop: handig om de zelfstandige antwoorden te
+  # controleren zonder draden los te trekken, nutteloos in bedrijf. Voor "de
+  # ketel moet koest blijven" is blokkeren het juiste instrument, en dat doet
+  # het bijstookbeleid nu vanzelf.
+  #
+  # "Meld warmtelevering aan thermostaat" zette de vlamvlag in de zelfstandige
+  # stand. Die stand komt alleen voor als de ketel niet meepraat - een storing,
+  # geen situatie waarin je aan knoppen zit. De AVR meldt in dat geval gewoon
+  # levering; dat is de veilige kant, want een thermostaat die denkt dat er
+  # niets gebeurt gaat opschroeven.
+  #
+  # Terugzetten kost geen burn, de AVR kent beide vlaggen nog:
+  #
+  # - platform: template
+  #   name: "Ketel overslaan"
+  #   optimistic: true
+  #   restore_mode: ALWAYS_OFF
+  #   entity_category: config
+  #   icon: mdi:debug-step-over
+  #   turn_on_action:
+  #     - lambda: 'id(otlink)->set_force_standalone(true);'
+  #   turn_off_action:
+  #     - lambda: 'id(otlink)->set_force_standalone(false);'
+  #
+  # - platform: template
+  #   name: "Meld warmtelevering aan thermostaat"
+  #   optimistic: true
+  #   restore_mode: RESTORE_DEFAULT_ON
+  #   entity_category: config
+  #   icon: mdi:heat-wave
+  #   turn_on_action:
+  #     - lambda: 'id(otlink)->set_standalone_flame(true);'
+  #   turn_off_action:
+  #     - lambda: 'id(otlink)->set_standalone_flame(false);'
 
   # DE BIJSTOOK BLOKKEREN. Aan = de ketel krijgt het lage setpoint hierboven
   # opgelegd en houdt zich koest; uit = de vraag van de thermostaat gaat
@@ -689,6 +704,7 @@ switch:
   # stilstaand koud water meet. Meet dat eerst - zie de documentatie.
   - platform: template
     name: "WP-temperaturen aan thermostaat tonen"
+    id: sw_subst
     optimistic: true
     restore_mode: ALWAYS_OFF
     entity_category: config
@@ -720,14 +736,18 @@ switch:
       sorting_group_id: grp_beleid
       sorting_weight: 4
 
-  # Het laatste vangnet: blijft de kamer meer dan een graad onder het gewenste
-  # zakken terwijl de warmtepomp al twee keer de wachttijd tekortschiet, dan mag
-  # de ketel er vol in - ook boven de buitentemperatuurgrens.
+  # De afweging als het erop aankomt: wordt het huis warm, of blijft het gas uit?
   #
-  # Uit zetten als je liever een graad kouder zit dan gas stookt. Dan is de
-  # grens absoluut.
+  # AAN  - blijft de kamer meer dan een graad onder het gewenste zakken terwijl
+  #        de warmtepomp al twee keer de wachttijd tekortschiet, dan mag de ketel
+  #        er vol in. Ook boven de buitentemperatuurgrens hiernaast.
+  # UIT  - die grens is absoluut. Boven de grens komt er geen gas bij, en dan zit
+  #        je een graad kouder.
+  #
+  # Dit is het enige moment waarop de regeling zelf beslist dat comfort voorgaat.
+  # Overal anders wint zuinigheid.
   - platform: template
-    name: "Vangnet: ketel vrij bij koude kamer"
+    name: "Comfort gaat voor gas besparen"
     id: sw_vangnet
     optimistic: true
     restore_mode: RESTORE_DEFAULT_ON
