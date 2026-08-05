@@ -24,6 +24,29 @@ telegrammen CRC-geldig, en de buitenunit reageert op de gestuurde stand.
 
 ---
 
+## Twee configuraties: kies er één
+
+De IC2-kant is optioneel. Er staan twee yaml-bestanden klaar en je flasht er één
+van:
+
+| | `aurea-wp-minimaal.yaml` | `aurea-wp.yaml` |
+|---|---|---|
+| ESP32 in IC1 | ✅ | ✅ |
+| Eigen chip in IC2 | — (voet blijft leeg) | ✅ ATmega328P |
+| Warmtepomp aansturen | ✅ volledig | ✅ volledig |
+| Thermostaat & CV-ketel | los aansturen, zoals voorheen | via de OpenTherm-brug |
+| Extra bedrading | alleen GPIO16/17 | + een deler op GPIO19 |
+
+**Begin met de minimale.** Daarmee heb je de warmtepomp compleet in Home
+Assistant en weet je zeker dat je bedrading klopt, vóórdat je een chip gaat
+branden. Het is ook de configuratie waar je op terugvalt als er iets mis is met
+de brug: de warmtepomp blijft dan gewoon draaien.
+
+Overstappen is later niets meer dan de andere yaml flashen. De apparaatnaam
+blijft `aurea-wp`, dus Home Assistant houdt het apparaat en de geschiedenis van
+alle sensoren die in beide bestanden zitten — je krijgt er alleen de
+thermostaat- en ketelentiteiten bij.
+
 ## Wat je nodig hebt
 
 ### Voor IC1 — de warmtepompkant
@@ -31,7 +54,9 @@ telegrammen CRC-geldig, en de buitenunit reageert op de gestuurde stand.
 Een **ESP32**; ontwikkeld op een MH-ET LIVE MiniKit, maar elk ESP32-bord met de
 juiste pinnen vrij werkt. Zie [WIRING.md](WIRING.md).
 
-### Voor IC2 — de OpenTherm-brug
+### Voor IC2 — de OpenTherm-brug *(optioneel)*
+
+Sla dit over als je `aurea-wp-minimaal.yaml` draait.
 
 Een **ATmega328P-PU in DIP-28**. Dat is dezelfde behuizing als de originele
 ATmega8, dus hij past rechtstreeks in de bestaande voet.
@@ -247,7 +272,8 @@ stand 0.
 
 ```
 aurea-wp-666/
-├── aurea-wp.yaml           device-config (entities, wifi, ota)
+├── aurea-wp.yaml           volledige opzet: warmtepomp + OpenTherm-brug
+├── aurea-wp-minimaal.yaml  alleen de warmtepomp, IC2-voet leeg
 ├── secrets.yaml.example    kopieer naar secrets.yaml en vul in
 ├── WIRING.md               bedrading + ASCII-schema
 ├── components/
@@ -274,8 +300,11 @@ kunnen OTA flashen, maar ze weten niets van elkaars wijzigingen.
 git clone https://github.com/Aapjedotinfo/atlantic-aurea-esphome
 cd atlantic-aurea-esphome
 cp secrets.yaml.example secrets.yaml   # wifi + api-sleutel invullen
-esphome run aurea-wp.yaml              # eerste keer via USB, daarna OTA
+esphome run aurea-wp-minimaal.yaml     # eerste keer via USB, daarna OTA
 ```
+
+Draait dat, en zit er een gebrande 328P in de IC2-voet? Dan
+`esphome run aurea-wp.yaml` en je hebt de brug erbij.
 
 ### B. In de Home Assistant ESPHome Device Builder
 
@@ -284,16 +313,9 @@ repo gehaald, dus alles kan in de webinterface.
 
 1. **+ NEW DEVICE** → naam `aurea-wp` → ESP32 → *Skip* bij het installeren.
 2. Klik **EDIT** en vervang de gegenereerde inhoud door die van
-   [`aurea-wp.yaml`](aurea-wp.yaml). Wissel daarin dit blok:
-
-   ```yaml
-   external_components:
-     - source:
-         type: local
-         path: components
-   ```
-
-   voor:
+   [`aurea-wp-minimaal.yaml`](aurea-wp-minimaal.yaml) of
+   [`aurea-wp.yaml`](aurea-wp.yaml). Wissel daarin het
+   `external_components`-blok voor:
 
    ```yaml
    external_components:
@@ -303,6 +325,8 @@ repo gehaald, dus alles kan in de webinterface.
          ref: main
        components: [chofu_wp, aurea_link]
    ```
+
+   Bij de minimale opzet mag `aurea_link` uit die lijst.
 
 3. Menu rechtsboven → **Secrets** → `wifi_ssid`, `wifi_password`,
    `fallback_password` en `api_encryption` toevoegen.
@@ -316,7 +340,7 @@ repo gehaald, dus alles kan in de webinterface.
 > tijdelijk `refresh: 0s` in het `source`-blok — anders bouwt hij door op de
 > oude kopie.
 
-Liever tóch lokale bestanden in de addon? Zet dan `aurea-wp.yaml` in
+Liever tóch lokale bestanden in de addon? Zet dan de yaml van je keuze in
 `/config/esphome/` en de mappen `components/chofu_wp/` en
 `components/aurea_link/` in `/config/esphome/components/`; het
 `external_components`-blok blijft dan ongewijzigd, want `path: components` is

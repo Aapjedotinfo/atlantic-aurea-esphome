@@ -1,0 +1,380 @@
+# ═══════════════════════════════════════════════════════════════════════════
+#  Aurea WP - MINIMALE OPSTELLING
+#
+#  Alleen een ESP32 in de IC1-socket. De IC2-socket blijft leeg: geen eigen
+#  ATmega328P, geen OpenTherm-brug. De warmtepomp doet alles wat hij in de
+#  volledige opstelling ook doet; je CV-ketel stuur je los aan, zoals voorheen.
+#
+#  Kies deze als:
+#   - je nog geen 328P hebt gebrand, of er nog niet aan toe bent;
+#   - je helemaal geen CV-ketel aan de controlbox hebt hangen;
+#   - er iets mis is met de brug en je de warmtepomp toch wilt laten draaien.
+#
+#  Overstappen naar de volledige opstelling is later gewoon een andere yaml
+#  flashen: de naam blijft `aurea-wp`, dus Home Assistant houdt het apparaat en
+#  de geschiedenis van alle sensoren die in beide bestanden voorkomen. Je krijgt
+#  er dan de thermostaat- en ketelentiteiten bij.
+#
+#  Bedrading: zie WIRING.md. Voor deze opstelling heb je alleen GPIO16/17 en de
+#  voeding nodig - de deler op GPIO19 mag je overslaan.
+# ═══════════════════════════════════════════════════════════════════════════
+
+substitutions:
+  name: "aurea-wp"
+  friendly_name: Aurea Warmtepomp
+
+esphome:
+  name: ${name}
+  friendly_name: ${friendly_name}
+
+esp32:
+  board: mhetesp32minikit
+  framework:
+    type: arduino
+
+# Alleen chofu_wp is nodig; aurea_link blijft ongebruikt.
+external_components:
+  - source:
+      type: local
+      path: components
+    components: [chofu_wp]
+
+# ─────────────────────────────────────────────────────────────────
+#  Hardware UART naar de warmtepomp-controlbox (via de 2x H11D1 opto's)
+#  666 baud, 8N1 - buitenunit is master. Zie README.md voor bedrading.
+#  RX (GPIO16) <- pin 27 (van WP), via R9(4k7)+10k naar GND.
+#  TX (GPIO17) -> pin 26 (naar WP), rechtstreeks op de driver-trap.
+# ─────────────────────────────────────────────────────────────────
+uart:
+  - id: wp_uart
+    rx_pin: GPIO16
+    tx_pin: GPIO17
+    baud_rate: 666
+
+chofu_wp:
+  id: wp
+  uart_id: wp_uart
+  update_interval: 5s   # Regelcyclus
+  # Regeling (defaults zijn bewust rustig; zelden nodig aan te passen):
+  # dt_low: 4.0          # onderkant gezonde delta-T-band (°C)
+  # dt_high: 8.0         # bovenkant: boven deze delta-T niet verder opstoken
+  max_stand: 10         # mag tot 10: het origineel kende stand 1-10.
+                        # ONBEWEZEN voor elke buitenunit - verhoog stapsgewijs
+                        # en kijk of "Vermogen" en "Compressor" meestijgen.
+  # step_interval: 120s  # max ±1 stand per 2 min (niet volgas)
+
+logger:
+
+api:
+  encryption:
+    key: !secret api_encryption
+
+ota:
+  platform: esphome
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+  ap:
+    ssid: "${friendly_name}_Hotspot"
+    password: !secret fallback_password
+
+# web_server versie 3 groepeert de entiteiten. Minder groepen dan in de
+# volledige opstelling, want er is geen thermostaat- of ketelkant.
+web_server:
+  port: 80
+  version: 3
+  sorting_groups:
+    - id: grp_wp
+      name: "Warmtepomp"
+      sorting_weight: 10
+    - id: grp_instellingen
+      name: "Instellingen"
+      sorting_weight: 20
+    - id: grp_diag
+      name: "Diagnose"
+      sorting_weight: 30
+    - id: grp_systeem
+      name: "Apparaat"
+      sorting_weight: 40
+
+time:
+  - platform: homeassistant
+    id: homeassistant_time
+
+captive_portal:
+
+# Blauwe onboard LED van de MH-ET MiniKit als status-LED
+status_led:
+  pin:
+    number: GPIO2
+
+# ═══════════════════════════════════════════════════════════════
+#  BEDIENING
+# ═══════════════════════════════════════════════════════════════
+
+number:
+  # PRIMAIRE KNOP: "geef me constant water op X°C" - de controller kiest
+  # zelf de stand (0 t/m max_stand) om die aanvoertemperatuur te halen.
+  - platform: template
+    name: "Setpoint aanvoer"
+    id: n_setpoint
+    # Volledig technisch bereik uit de Chofu-datasheet (AEYC-0643XU):
+    # leaving water temperature -> koelen 6.5°C~ , verwarmen ~60°C
+    min_value: 6.5
+    max_value: 60
+    step: 0.5
+    initial_value: 35
+    optimistic: true
+    restore_value: true
+    unit_of_measurement: "°C"
+    mode: box
+    icon: mdi:thermometer-water
+    on_value:
+      then:
+        - lambda: 'id(wp)->set_setpoint(x);'
+    web_server:
+      sorting_group_id: grp_wp
+      sorting_weight: 1
+
+  # Handmatige override: zet zelf de stand (werkt alleen in modus "handmatig").
+  - platform: template
+    name: "Handmatige stand"
+    id: n_manual_stand
+    min_value: 0
+    max_value: 10
+    step: 1
+    initial_value: 1
+    optimistic: true
+    mode: slider
+    icon: mdi:gauge
+    on_value:
+      then:
+        - lambda: 'id(wp)->set_manual_stand((int) x);'
+    web_server:
+      sorting_group_id: grp_wp
+      sorting_weight: 4
+
+  # Hoe snel de regeling mag bijsturen: maximaal ±1 stand per interval.
+  # Lang (120s) = rustig, compressorvriendelijk bij verwarmen.
+  # Kort (30-45s) = kordaat, handig bij koelen waar de traagheid je tegenwerkt.
+  - platform: template
+    name: "Stap-interval"
+    id: n_step_interval
+    min_value: 10
+    max_value: 600
+    step: 5
+    initial_value: 120
+    optimistic: true
+    restore_value: true
+    unit_of_measurement: "s"
+    mode: box
+    icon: mdi:timer-cog-outline
+    entity_category: config
+    on_value:
+      then:
+        - lambda: 'id(wp)->set_step_interval((uint32_t) (x * 1000));'
+    web_server:
+      sorting_group_id: grp_instellingen
+      sorting_weight: 2
+
+select:
+  - platform: template
+    name: "Modus"
+    options: ["auto", "handmatig"]
+    initial_option: "auto"
+    optimistic: true
+    icon: mdi:refresh-auto
+    on_value:
+      then:
+        - lambda: 'id(wp)->set_auto_mode(x == "auto");'
+    web_server:
+      sorting_group_id: grp_wp
+      sorting_weight: 2
+
+switch:
+  # Master aan/uit. Niet persistent: na een herstart staat het systeem altijd
+  # UIT. Een ESP32 die om wat voor reden dan ook opnieuw opkomt hoort niet
+  # ongevraagd de compressor te starten - aanzetten is een bewuste handeling.
+  - platform: template
+    name: "Systeem"
+    optimistic: true
+    restore_mode: ALWAYS_OFF
+    icon: mdi:power
+    turn_on_action:
+      - lambda: 'id(wp)->set_system_on(true);'
+    turn_off_action:
+      - lambda: 'id(wp)->set_system_on(false);'
+    web_server:
+      sorting_group_id: grp_wp
+      sorting_weight: 3
+
+  # EXPERIMENTEEL: koelbedrijf (data2 byte 4 = 0x02 i.p.v. 0x01). Staat na een
+  # reboot altijd weer op verwarmen. Let op condensvorming op niet-geïsoleerde
+  # CV-leidingen en radiatoren: onder het dauwpunt gaan die zweten.
+  - platform: template
+    name: "Koelen"
+    optimistic: true
+    restore_mode: ALWAYS_OFF
+    entity_category: config
+    icon: mdi:snowflake
+    turn_on_action:
+      - lambda: 'id(wp)->set_cooling(true);'
+    turn_off_action:
+      - lambda: 'id(wp)->set_cooling(false);'
+    web_server:
+      sorting_group_id: grp_instellingen
+      sorting_weight: 1
+
+  # Diagnose: zet de ruwe FRAME-hexlog aan/uit (standaard uit). Handig bij
+  # sleutelen aan de bekabeling; laat 'm normaal uit voor een schone log.
+  - platform: template
+    name: "Debug frames"
+    optimistic: true
+    restore_mode: ALWAYS_OFF
+    entity_category: config
+    icon: mdi:bug
+    turn_on_action:
+      - lambda: 'id(wp)->set_raw_debug(true);'
+    turn_off_action:
+      - lambda: 'id(wp)->set_raw_debug(false);'
+    web_server:
+      sorting_group_id: grp_diag
+      sorting_weight: 2
+
+button:
+  - platform: restart
+    name: "Restart ${friendly_name}"
+    web_server:
+      sorting_group_id: grp_systeem
+      sorting_weight: 1
+
+# ═══════════════════════════════════════════════════════════════
+#  UITLEZEN
+# ═══════════════════════════════════════════════════════════════
+
+sensor:
+  - platform: template
+    name: "Aanvoer"
+    lambda: 'return id(wp)->get_supply();'
+    update_interval: 10s
+    unit_of_measurement: "°C"
+    device_class: temperature
+    state_class: measurement
+    accuracy_decimals: 1
+    web_server:
+      sorting_group_id: grp_wp
+      sorting_weight: 5
+
+  - platform: template
+    name: "Retour"
+    lambda: 'return id(wp)->get_return();'
+    update_interval: 10s
+    unit_of_measurement: "°C"
+    device_class: temperature
+    state_class: measurement
+    accuracy_decimals: 1
+    web_server:
+      sorting_group_id: grp_wp
+      sorting_weight: 6
+
+  - platform: template
+    name: "Delta T"
+    lambda: 'return id(wp)->get_delta_t();'
+    update_interval: 10s
+    unit_of_measurement: "°C"
+    state_class: measurement
+    accuracy_decimals: 1
+    entity_category: diagnostic
+    web_server:
+      sorting_group_id: grp_wp
+      sorting_weight: 7
+
+  - platform: template
+    name: "Buiten"
+    lambda: 'return id(wp)->get_outside();'
+    update_interval: 10s
+    unit_of_measurement: "°C"
+    device_class: temperature
+    state_class: measurement
+    accuracy_decimals: 1
+    web_server:
+      sorting_group_id: grp_wp
+      sorting_weight: 8
+
+  - platform: template
+    name: "Stand"
+    lambda: 'return id(wp)->get_stand();'
+    update_interval: 10s
+    accuracy_decimals: 0
+    icon: mdi:gauge
+    web_server:
+      sorting_group_id: grp_wp
+      sorting_weight: 9
+
+  - platform: template
+    name: "Vermogen"
+    lambda: 'return id(wp)->get_power();'   # Echt vermogen uit de WP (25.6 W/stap)
+    update_interval: 10s
+    unit_of_measurement: "W"
+    device_class: power
+    state_class: measurement
+    accuracy_decimals: 0
+    web_server:
+      sorting_group_id: grp_wp
+      sorting_weight: 10
+
+  - platform: template
+    name: "Compressor"
+    lambda: 'return id(wp)->get_wp_speed();'  # Speed setpoint zoals WP rapporteert
+    update_interval: 10s
+    state_class: measurement
+    accuracy_decimals: 0
+    icon: mdi:sine-wave
+    web_server:
+      sorting_group_id: grp_wp
+      sorting_weight: 11
+
+  - platform: uptime
+    name: ${name} Uptime
+    web_server:
+      sorting_group_id: grp_systeem
+      sorting_weight: 2
+
+  - platform: wifi_signal
+    name: ${name} WiFi Signal
+    update_interval: 120s
+    web_server:
+      sorting_group_id: grp_systeem
+      sorting_weight: 3
+
+binary_sensor:
+  - platform: template
+    name: "Actief"
+    lambda: 'return id(wp)->get_running();'
+    device_class: running
+    web_server:
+      sorting_group_id: grp_wp
+      sorting_weight: 12
+
+  # Fail-safe: >60 s zonder geldig telegram -> terug naar stand 0. Valt deze
+  # weg, dan is het de bekabeling of de buitenunit, niet de regeling.
+  - platform: template
+    name: "Communicatie"
+    lambda: 'return id(wp)->get_comm_ok();'
+    device_class: connectivity
+    entity_category: diagnostic
+    web_server:
+      sorting_group_id: grp_diag
+      sorting_weight: 1
+
+text_sensor:
+  - platform: version
+    name: ${name} ESPHome Version
+  - platform: wifi_info
+    ip_address:
+      name: ${name} IP
+    ssid:
+      name: ${name} SSID
+    bssid:
+      name: ${name} BSSID
