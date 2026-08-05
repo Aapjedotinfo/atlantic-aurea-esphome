@@ -329,7 +329,7 @@ void ChofuWP::set_cooling(bool c) {
   cooling_ = c;
   stand_ = 0;          // Altijd via stand 0 wisselen, nooit vliegend omkeren
   last_step_ms_ = 0;   // Mag daarna direct weer opbouwen
-  ESP_LOGI(TAG, "Bedrijfsmodus: %s", c ? "KOELEN (experimenteel)" : "verwarmen");
+  ESP_LOGI(TAG, "Bedrijfsmodus: %s", c ? "KOELEN" : "verwarmen");
 }
 
 void ChofuWP::set_system_on(bool on) {

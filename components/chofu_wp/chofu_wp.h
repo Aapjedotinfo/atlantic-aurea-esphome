@@ -51,7 +51,7 @@ class ChofuWP : public PollingComponent, public uart::UARTDevice {
   void set_system_on(bool on);
   void set_auto_mode(bool a);
   void set_manual_stand(int s);
-  void set_cooling(bool c);                       // Koelbedrijf (experimenteel)
+  void set_cooling(bool c);                       // Koelbedrijf (modus 0x02)
   bool get_cooling() const { return cooling_; }
   void set_raw_debug(bool b) { raw_debug_ = b; }  // FRAME-hexlog aan/uit (web-toggle)
   void force_step() { last_step_ms_ = 0; }  // Volgende cyclus mag direct schakelen
@@ -118,7 +118,7 @@ class ChofuWP : public PollingComponent, public uart::UARTDevice {
   // dat gat hoort de warmtepomp stil te staan, niet te draaien.
   bool system_on_{false};
   bool auto_mode_{true};
-  bool cooling_{false};  // false = verwarmen, true = koelen (experimenteel)
+  bool cooling_{false};  // false = verwarmen, true = koelen (modus 0x02)
   uint8_t manual_stand_{1};
 
   // ── Regel-state ──

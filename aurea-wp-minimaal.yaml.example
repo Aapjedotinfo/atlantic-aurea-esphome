@@ -219,9 +219,12 @@ switch:
       sorting_group_id: grp_wp
       sorting_weight: 3
 
-  # EXPERIMENTEEL: koelbedrijf (data2 byte 4 = 0x02 i.p.v. 0x01). Staat na een
-  # reboot altijd weer op verwarmen. Let op condensvorming op niet-geïsoleerde
-  # CV-leidingen en radiatoren: onder het dauwpunt gaan die zweten.
+  # Koelbedrijf: data2 byte 4 wordt 0x02 in plaats van 0x01. Aantoonbaar
+  # werkend op deze hardware, ook al heeft Atlantic het zelf nooit gebruikt.
+  # Staat na een herstart altijd weer op verwarmen.
+  #
+  # LET OP: onder het dauwpunt gaan niet-geïsoleerde leidingen en radiatoren
+  # condenseren. Houd het setpoint boven het BINNEN-dauwpunt, ~17 °C.
   - platform: template
     name: "Koelen"
     optimistic: true

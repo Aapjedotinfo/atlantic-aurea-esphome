@@ -362,10 +362,16 @@ switch:
       sorting_group_id: grp_wp
       sorting_weight: 3
 
-  # EXPERIMENTEEL: koelbedrijf (data2 byte 4 = 0x02 i.p.v. 0x01). Komt uit één
-  # forumpost en is niet geverifieerd - mogelijk negeert de WP het gewoon.
-  # Staat na een reboot altijd weer op verwarmen. Let op condensvorming op
-  # niet-geïsoleerde CV-leidingen en radiatoren.
+  # Koelbedrijf: data2 byte 4 wordt 0x02 in plaats van 0x01. Op het forum stond
+  # dit als onbevestigd en Atlantic zelf heeft het nooit gecommandeerd - in de
+  # hele originele flash komt alleen 0x00 en 0x01 voor. Op deze hardware
+  # aantoonbaar werkend: de compressor start en de aanvoer zakt onder de retour.
+  #
+  # Staat na een herstart altijd weer op verwarmen; koelen is een bewuste keuze.
+  #
+  # LET OP: een CV-systeem is zelden geïsoleerd tegen koud water. Onder het
+  # dauwpunt gaan leidingen en radiatoren condenseren. Houd het setpoint boven
+  # het BINNEN-dauwpunt, niet het buitendauwpunt - vuistregel ~17 °C.
   - platform: template
     name: "Koelen"
     optimistic: true
