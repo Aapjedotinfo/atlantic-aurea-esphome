@@ -20,7 +20,7 @@ decoderen frames zonder pariteitsfouten, met een echte thermostaat aan de ene
 kant en een CV-ketel aan de andere. De warmtepompkant draait al langer: alle
 telegrammen CRC-geldig, en de buitenunit reageert op de gestuurde stand.
 
-![De controlbox met de ESP32 op de plek van de originele microcontroller](docs/controlbox-esp32.jpg)
+![De webinterface, gegroepeerd met web_server v3](docs/esphome.jpg)
 
 ---
 
@@ -38,7 +38,20 @@ IC2-voet leeg, dan ligt er een uitgeklede variant klaar als
 | Thermostaat & CV-ketel | los aansturen, zoals voorheen | via de OpenTherm-brug |
 | Extra bedrading | alleen GPIO16/17 | + een deler op GPIO19 |
 
-Gebruik hem door hem over `aurea-wp.yaml` heen te kopiëren:
+![Minimale opzet: alleen de ESP32 in de IC1-voet](docs/controlbox-esp32.jpg)
+
+***Minimale opzet.*** *De ESP32 op de plek van de linker ATmega; de rechter voet
+blijft leeg. De warmtepomp draait volledig, de CV-ketel stuur je los aan.*
+
+![Uitgebreide opzet: beide chips vervangen](docs/controlboxv2.jpg)
+
+***Uitgebreide opzet met IC2-aansturing.*** *Links de ESP32, rechts de eigen
+ATmega328P — hier in een ZIF-voet, zodat je de chip zonder gereedschap kunt
+wisselen. Voeding via een USB-adapter. Rechtsonder staat op de zeefdruk
+`OT BOILER` / `O/1` bij de dipswitch en `Emergency only` bij de klemmen van de
+noodbrug.*
+
+Gebruik de minimale opzet door hem over `aurea-wp.yaml` heen te kopiëren:
 
 ```bash
 cp aurea-wp-minimaal.yaml.example aurea-wp.yaml
@@ -73,11 +86,19 @@ Sla dit over als je de minimale opzet draait.
 Een **ATmega328P-PU in DIP-28**. Dat is dezelfde behuizing als de originele
 ATmega8, dus hij past rechtstreeks in de bestaande voet.
 
-> **Waarom een 328P en niet weer een ATmega8?** Dezelfde pinout, dezelfde
-> registers, maar viermaal zoveel flash en tweemaal zoveel RAM. Er is geen enkele
-> reden om jezelf op 8 kB vast te zetten. De firmware gebruikt nu 6,1 kB — dat
-> past nog net in een ATmega8, maar dan is er geen ruimte meer om iets toe te
-> voegen.
+> **Waarom een nieuwe chip en niet de originele overschrijven?**
+>
+> Omdat je terug wilt kunnen. Laat de originele ATmega8 heel en bewaar hem, dan
+> is de controlbox in twee minuten weer fabrieksstaat: chips terug in de voet,
+> draden los, klaar. Dat telt als je nog garantie hebt, als er een monteur langs
+> moet komen, of als je het huis verkoopt. Overschrijf je de originelen, dan is
+> die weg afgesloten — de firmware die erop stond krijg je nergens meer.
+>
+> **En waarom dan een 328P?** Dezelfde behuizing, dezelfde pinout, dezelfde
+> registers, dus hij past rechtstreeks in de voet. Hij is overal te krijgen en
+> kost een paar euro. Bovendien heeft hij viermaal zoveel flash en tweemaal
+> zoveel RAM: de firmware gebruikt nu 7076 bytes, en op een ATmega8 hield je
+> daar iets meer dan een kilobyte van over.
 
 Wat je verder nodig hebt:
 
@@ -266,11 +287,16 @@ Assistant zie je dezelfde namen.
 |---|---|
 | **Warmtepomp** | Setpoint aanvoer, Modus, Systeem, Handmatige stand, Aanvoer, Retour, Delta T, Buiten, Stand, Vermogen, Compressor, Actief |
 | **Thermostaat** | Kamertemperatuur, Gewenste kamertemperatuur, Warmtevraag, Tapwatervraag, Thermostaat op afstand, Verbonden |
-| **CV-ketel** | Keteltemperatuur, Ketelmodulatie, Gevraagd ketelsetpoint, CV actief, Tapwater actief, Vlam, Ketelstoring, Verbonden, Ketel setpoint (rechtstreeks) |
-| **Bijstookbeleid** | Bijstook blokkeren, Bijstook geblokkeerd, Ketelsetpoint in rust, Ketel overslaan, Meld warmtelevering, WP-temperaturen tonen |
+| **CV-ketel** | Keteltemperatuur, Ketelretour, Ketel delta T, Ketelmodulatie, Gevraagd ketelsetpoint, Setpoint naar de ketel, CV actief, Tapwater actief, Vlam, Ketelstoring, Verbonden, Ketelsetpoint zonder thermostaat, Waterdruk CV, Tapwatertemperatuur |
+| **Bijstookbeleid** | Thermostaat stuurt warmtepomp, Bijstook blokkeren, Bijstook geblokkeerd, Ketelsetpoint in rust, Tekort warmtepomp, Bijstookreden, Maximale aanvoer warmtepomp, Wachttijd voor bijstook, Bijstook pas onder buitentemperatuur, Ketelsetpoint bij bijstook, Comfort gaat voor gas besparen, WP-temperaturen tonen |
 | **Instellingen** | Koelen, Stap-interval, Statuslampje |
-| **Diagnose** | Brug verbonden, Brug herstarts, Brug gemiste berichten, Communicatie, Noodbrug aangetrokken, Keteltype (dipswitch), Debug frames |
+| **Diagnose** | Brug verbonden, Brug herstarts, Brug gemiste berichten, Communicatie, Noodbrug aangetrokken, Keteltype (dipswitch), OT Data-ID's gezien, Debug frames |
 | **Apparaat** | Restart, Uptime, WiFi Signal |
+
+*Onder **CV-ketel** staat `Gevraagd ketelsetpoint` (wat de thermostaat vraagt)
+naast `Setpoint naar de ketel` (wat de brug ervan maakt); het verschil is de
+blokkade. `Waterdruk CV` en `Tapwatertemperatuur` staan op NA omdat deze ketel
+die Data-ID's niet beantwoordt.*
 
 Twee dingen om te weten over **Diagnose**:
 
@@ -386,9 +412,8 @@ dauwpunt gaan leidingen en radiatoren **condenseren** — met kans op waterschad
 Houd het setpoint hoog genoeg (vuistregel: boven ~17 °C) of isoleer je leidingen.
 
 **De dipswitches op de print.** Dip 2 zit op socket-pin 25 (PC2) en bepaalt het
-keteltype: **ON = normaal OpenTherm-bedrijf.** Staat hij op OFF, dan knijpt de
-originele logica de hele ketelkant af — en dat kost je een avond zoeken naar een
-firmwarefout die er niet is.
+keteltype: **ON = OpenTherm-bedrijf.** Op OFF knijpt de logica de hele ketelkant
+af en komt er geen verkeer naar de ketel.
 
 ## Credits
 
