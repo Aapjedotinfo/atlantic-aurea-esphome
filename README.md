@@ -81,12 +81,12 @@ ATmega8, dus hij past rechtstreeks in de bestaande voet.
 
 Wat je verder nodig hebt:
 
-- Iets om de chip mee te branden. Heb je een **Arduino Uno** liggen, dan is dat
-  genoeg: met de ArduinoISP-sketch wordt hij zelf de programmer, zes draadjes en
-  klaar. Een **TL866-II** is comfortabeler — chip in de ZIF-voet, fuses in een
-  venstertje — maar kost zo'n €80 en verdient zichzelf pas terug als je vaker
-  losse chips brandt. Beide wegen staan uitgewerkt in
-  [firmware/README.md](firmware/README.md).
+- Iets om de chip mee te branden. Met een **TL866-II** gaat het zeker goed —
+  chip in de ZIF-voet, fuses in een venstertje — maar die kost zo'n €80 en
+  verdient zichzelf pas terug als je vaker losse chips brandt. Heb je een
+  **Arduino Uno** liggen, dan kan het daar in principe ook mee via de
+  ArduinoISP-sketch; die route is uitgewerkt maar **nog door niemand
+  uitgeprobeerd**. Beide staan in [firmware/README.md](firmware/README.md).
 - **Geen kristal.** Onder de IC2-voet zit er al een van 8 MHz, gewoon op de
   print. De firmware is daarop gebouwd.
 

@@ -60,11 +60,21 @@ gebruiken en die de resetvector verlegt.
 | Bedrading | zes draadjes + een elco | chip in de ZIF-voet |
 | Fuses | met de hand via avrdude | vinkjes in een venster |
 | Valkuil | kip-en-ei met de klok, zie hieronder | geen |
+| Beproefd | **nee** | ja, zo is deze chip gebrand |
 
 Voor één chip is de Uno de logische keuze. De TL866 verdient zichzelf pas terug
 als je vaker losse chips brandt.
 
 ## Branden met een Arduino Uno (ArduinoISP)
+
+> **Deze route is niet uitgeprobeerd.** Hij is afgeleid uit de standaard
+> ArduinoISP-procedure plus de fuses die deze firmware nodig heeft, maar er is
+> nog niemand die deze chip zo daadwerkelijk gebrand heeft. De TL866-route
+> hieronder is dat wel, met een screenshot van de geslaagde burn.
+>
+> Loopt het bij jou goed af, meld het dan even in het Tweakers-topic — dan kan
+> dit voorbehoud eruit. Loopt het mis, ook: dan staat hier binnenkort wat er
+> precies misging.
 
 Laad eerst **Bestand &rarr; Voorbeelden &rarr; ArduinoISP** in de Uno. Daarna wordt
 hij zelf de programmer.
