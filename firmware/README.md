@@ -52,6 +52,75 @@ Uit `<bouwmap>` heb je **`avr-bridge.ino.hex`** nodig. Níét de variant met
 `with_bootloader` in de naam: die zet er een bootloader bij die wij niet
 gebruiken en die de resetvector verlegt.
 
+## Branden: twee wegen
+
+| | Arduino Uno als ISP | TL866-II (Xgpro) |
+|---|---|---|
+| Kosten | niets, als je een Uno hebt | ~€80 |
+| Bedrading | zes draadjes + een elco | chip in de ZIF-voet |
+| Fuses | met de hand via avrdude | vinkjes in een venster |
+| Valkuil | kip-en-ei met de klok, zie hieronder | geen |
+
+Voor één chip is de Uno de logische keuze. De TL866 verdient zichzelf pas terug
+als je vaker losse chips brandt.
+
+## Branden met een Arduino Uno (ArduinoISP)
+
+Laad eerst **Bestand &rarr; Voorbeelden &rarr; ArduinoISP** in de Uno. Daarna wordt
+hij zelf de programmer.
+
+| Uno | 328P-pin | |
+|---|---|---|
+| D13 | 19 | SCK |
+| D12 | 18 | MISO |
+| D11 | 17 | MOSI |
+| D10 | 1 | RESET |
+| 5V | 7 en 20 | VCC + AVCC |
+| GND | 8 en 22 | |
+
+Plus een **elco van 10 µF tussen RESET en GND van de Uno**, met de min aan GND.
+Plaats die pas ná het uploaden van de ArduinoISP-sketch: zonder die condensator
+reset de Uno zichzelf zodra avrdude de poort opent, en dan gebeurt er niets.
+
+### Het addertje: kip en ei met de klok
+
+ISP-programmeren werkt alleen als de doelchip **draait**. Onze `lfuse = 0xFF`
+betekent "extern kristal", en zet je die op een breadboard zonder kristal, dan
+is de chip daarna niet meer aanspreekbaar. Hij heeft geen klok meer.
+
+Twee uitwegen:
+
+- **Zet een kristal op het breadboard** (8 of 16 MHz met 2× 22 pF). Dan maakt de
+  volgorde niet uit.
+- **Of doe de fuses als laatste.** Een verse 328P staat op interne RC
+  (`lfuse = 0x62`, 1 MHz), dus flashen kan meteen. Schrijf eerst de firmware,
+  dan de fuses, en accepteer dat de chip daarna alleen nog in de controlbox
+  werkt.
+
+Bij die 1 MHz uit de fabriek moet avrdude worden afgeremd — de ISP-klok mag
+hoogstens een kwart van de doelklok zijn. Voeg `-B 125` toe als je *not in sync*
+krijgt.
+
+### De commando's
+
+```bash
+avrdude -c avrisp -P COM5 -b 19200 -p m328p -B 125 -U flash:w:avr-bridge/avr-bridge.hex:i
+```
+
+```bash
+avrdude -c avrisp -P COM5 -b 19200 -p m328p -U lfuse:w:0xFF:m -U hfuse:w:0xD9:m -U efuse:w:0xFD:m
+```
+
+Die `-b 19200` is de baudrate waarop de ArduinoISP-sketch praat, niet die van de
+doelchip.
+
+> **Gebruik niet "Bootloader branden" uit de IDE.** Dat lijkt de makkelijke weg,
+> maar de Pro Mini 8 MHz-definitie zet `hfuse = 0xDA`, en daarin staat **BOOTRST
+> geprogrammeerd**: de chip springt na een reset naar het bootloadergebied.
+> Overschrijf je dat gebied daarna met onze firmware, dan start hij in een leeg
+> stuk flash en doet hij niets. Vandaar `0xD9` — reset naar adres 0. Ben je die
+> weg toch ingeslagen, zet de hfuse dan achteraf met avrdude recht.
+
 ## Branden met de TL866-II (Xgpro)
 
 De programmer brandt de chip in zijn eigen ZIF-voet; er komt geen ISP-kabel en
