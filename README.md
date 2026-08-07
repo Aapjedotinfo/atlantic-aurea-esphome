@@ -388,6 +388,44 @@ Liever tóch lokale bestanden in de addon? Zet dan de yaml van je keuze in
 `external_components`-blok blijft dan ongewijzigd, want `path: components` is
 relatief aan de yaml.
 
+## Gebruik je dit zonder Home Assistant?
+
+Zet dan `reboot_timeout` uit. ESPHome heeft in het `api:`-blok een waakhond die
+**standaard op 15 minuten** staat: verbindt er in die tijd geen enkele
+API-client, dan herstart het apparaat. Bedoeld om een vastgelopen wifi-stack te
+herstellen, maar hij kent maar één soort client.
+
+**De webinterface telt niet mee.** Die draait op poort 80 en staat los van de
+native API op 6053. Bedien je alles via de webpagina en heb je het apparaat nooit
+in Home Assistant toegevoegd, dan herstart hij dus elk kwartier — eindeloos. En
+omdat `Systeem` na een herstart uit staat, valt je warmtepomp daarmee elk
+kwartier stil.
+
+In de log ziet dat er zo uit:
+
+```
+[E][api:152]: No clients; rebooting
+[I][app:264]: Forcing a reboot
+```
+
+Uitzetten:
+
+```yaml
+api:
+  reboot_timeout: 0s
+  encryption:
+    key: !secret api_encryption
+```
+
+> **Verwarrend detail:** `esphome logs` verbindt zelf over die API. Zolang je naar
+> de logs kijkt staat de teller stil en gebeurt er niets. Sluit je de terminal,
+> dan loopt hij weer. Het probleem verdwijnt dus precies wanneer je ernaar kijkt.
+
+Gebruik je Home Assistant wél en zie je die melding toch? Dan verbindt HA niet.
+Controleer of het apparaat er als device in staat, of `api_encryption` in je
+`secrets.yaml` overeenkomt met wat HA heeft opgeslagen, en kijk naar de sensor
+`WiFi Signal` — rond of onder −80 dBm helpt geen enkele instelling.
+
 ## Diagnose
 
 Zet de **"Debug frames"**-switch aan (web-GUI of Home Assistant) om elk ontvangen
