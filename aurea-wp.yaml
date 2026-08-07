@@ -241,6 +241,24 @@ globals:
 
 logger:
 
+# LET OP als je GEEN Home Assistant gebruikt.
+#
+# ESPHome herstart dit apparaat als er `reboot_timeout` lang geen API-client
+# verbindt. Die staat standaard op 15 minuten en is bedoeld om een vastgelopen
+# wifi-stack te herstellen.
+#
+# Maar de webinterface telt daar NIET voor mee: die draait op poort 80 en staat
+# los van de native API op 6053. Bedien je alles via de webpagina, dan herstart
+# hij dus elk kwartier - en omdat "Systeem" na een herstart uit staat, valt je
+# warmtepomp daarmee ook elk kwartier stil. In de log zie je dan:
+#
+#   [E][api:152]: No clients; rebooting
+#
+# Uitzetten met `reboot_timeout: 0s` hieronder. Gebruik je wel Home Assistant,
+# laat het dan zoals het is; dan is die waakhond juist nuttig.
+#
+# (Verwarrend: `esphome logs` verbindt zelf over die API, dus zolang je naar de
+#  logs kijkt loopt de teller niet.)
 api:
   encryption:
     key: !secret api_encryption
