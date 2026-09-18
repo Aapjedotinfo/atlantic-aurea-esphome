@@ -46,6 +46,35 @@ ATmega8 in DIP28, "Haddon T1.1".
 |---|---|---|
 | 14 | PB0 | R21 (10k) naar de status-LED |
 
+### Niet door ons gemeten &mdash; uit een pinoutlijst op gathering.tweakers.net
+
+Onderstaande komt uit een lijst van een derde, niet uit onze meter. Op elk punt
+dat wij wél nagemeten hebben komt die lijst overeen (pin 2/3 als gekruiste
+interconnect, 7/8/22 als voeding en massa, 9/10 als kristal, 26 = OK2 en
+27 = OK1, IC1 pin 14 als LED, IC2 pin 16 als relais, IC2 pin 27 als status-LED,
+IC2 pin 21 als AREF). Dat maakt de rest geloofwaardig, maar niet bevestigd.
+
+| Pin | Volgens die lijst | Opmerking |
+|---|---|---|
+| 16 | Relais 1 | **ook** op IC1, terwijl wij het relais alleen vanaf IC2 pin 16 in kaart brachten. Beide voeten op hetzelfde relais is plausibel maar ongemeten |
+| 18 | Schakelaar-LED | frontpaneel |
+| 20 | Schakelaar | frontpaneel |
+| 21 | Schakelaar | frontpaneel |
+| 23 | Schakelaar | frontpaneel |
+| 25 | doorverbinding naar IC2 pin 25 | wij maten daar dipswitch 2; een gedeelde lijn met de dip erop sluit elkaar niet uit |
+| 26 | "WP in (OK2)" | zelfde als onze *zenden naar de warmtepomp* |
+| 27 | "WP uit (OK1)" | zelfde als onze *ontvangen van de warmtepomp* |
+
+> **Let op de richtingsaanduiding.** Die lijst schrijft "in" en "uit" vanuit het
+> randapparaat, niet vanuit de MCU. `WP in` is dus de lijn *naar de warmtepomp
+> toe*, wat voor de AVR een uitgang is. Lees je het als MCU-ingang, dan staat
+> alles omgekeerd. Zelfde conventie bij `Opentherm in` (pin 5, ons zendpad via
+> R13 naar de OK5-LED) en `Opentherm uit` (pin 11, onze ontvangst via OK5 pin 7).
+
+Het frontpaneel is daarmee het enige deel van de IC1-voet waar we iets van
+weten zonder het te hebben gemeten. Vier pinnen: drie schakelaarcontacten en
+een LED. Wat de knoppen dóen staat er niet bij.
+
 ## Onderdelen
 
 | Ref | Type | Wat we ervan weten |
