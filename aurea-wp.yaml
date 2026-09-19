@@ -93,6 +93,28 @@ interval:
             id(otlink)->override_to_thermostat(27, buiten);
           }
 
+  # Waakhond op het stand-plafond.
+  #
+  # Dit is de spiegel van de waakhond die een tweede, volgende unit nodig heeft.
+  # Daar vervalt een opdracht naar STAND 0, want een hulpunit die doordraait
+  # terwijl niemand meer kijkt is het gevaar. Hier vervalt een beperking naar
+  # VOL VRIJ, want deze unit houdt je huis warm en stilstand is hier het gevaar.
+  # Allebei faalveilig, elk in de richting die bij zijn rol hoort.
+  #
+  # Zonder dit zou een plafond dat ooit op 4 gezet is daar de hele winter
+  # blijven staan als de aansturing wegvalt - met de handrem aan, en niets dat
+  # het je vertelt.
+  - interval: 60s
+    then:
+      - lambda: |-
+          if (id(g_plafond_ms) == 0) return;             // geen beperking actief
+          const uint32_t oud_min = (millis() - id(g_plafond_ms)) / 60000;
+          if (oud_min < (uint32_t) id(n_plafond_wacht)->state) return;
+          id(g_plafond_ms) = 0;
+          id(wp)->set_max_stand(10);                     // houd gelijk aan max_stand: hierboven
+          id(n_max_stand)->publish_state(10);
+          ESP_LOGW("plafond", "Stand-plafond verlopen na %u min - weer vol vrij", oud_min);
+
   # ═══════════════════════════════════════════════════════════════
   #  DE KOPPELING: de thermostaat stuurt de warmtepomp
   # ═══════════════════════════════════════════════════════════════
@@ -239,6 +261,13 @@ globals:
     restore_value: false
     initial_value: '"koppeling uit"'
 
+  # Wanneer het stand-plafond voor het laatst geschreven is. Nul betekent
+  # "nooit geschreven", dus geen beperking actief en niets te bewaken.
+  - id: g_plafond_ms
+    type: uint32_t
+    restore_value: false
+    initial_value: '0'
+
 logger:
 
 # LET OP als je GEEN Home Assistant gebruikt.
@@ -382,6 +411,57 @@ number:
     web_server:
       sorting_group_id: grp_instellingen
       sorting_weight: 2
+
+  # Een plafond op de STAND, niet op de temperatuur. Bedoeld om de last te
+  # kunnen verdelen over twee buitenunits: laat je ze allebei op stand 5 lopen
+  # in plaats van eentje op 10, dan draaien beide compressoren op deellast, ligt
+  # hun verdampingstemperatuur hoger en blijft het lamellenblok warmer. Dat
+  # scheelt rijp, en dat is waar het bij twee units om te doen is.
+  #
+  # Bewust een PLAFOND en geen stand-commando. De regeling van deze unit blijft
+  # zijn eigen setpoint najagen, alleen met een lager dak. Valt de aansturing
+  # weg, dan blijft hij dus gewoon stoken - hij staat niet stil te wachten op
+  # een opdracht die niet meer komt.
+  - platform: template
+    name: "Maximale stand warmtepomp"
+    id: n_max_stand
+    min_value: 1
+    max_value: 10
+    step: 1
+    initial_value: 10
+    restore_value: false      # na een herstart weer vol vrij
+    mode: slider
+    icon: mdi:speedometer-slow
+    entity_category: config
+    # set_action en niet on_value: die laatste vuurt alleen bij een VERANDERING.
+    # Schrijft de aansturing elke minuut dezelfde 5, dan ziet on_value daar
+    # niets van en denkt de waakhond hieronder dat er niemand meer luistert.
+    set_action:
+      - lambda: |-
+          id(g_plafond_ms) = millis();
+          id(wp)->set_max_stand((int) x);
+          id(n_max_stand)->publish_state(x);
+    web_server:
+      sorting_group_id: grp_instellingen
+      sorting_weight: 3
+
+  # Hoe lang een plafond blijft staan zonder dat er iemand naar omkijkt.
+  - platform: template
+    name: "Vervaltijd stand-plafond"
+    id: n_plafond_wacht
+    min_value: 5
+    max_value: 240
+    step: 5
+    initial_value: 30
+    optimistic: true
+    restore_value: true
+    unit_of_measurement: "min"
+    mode: box
+    icon: mdi:timer-sand
+    entity_category: config
+    web_server:
+      sorting_group_id: grp_instellingen
+      sorting_weight: 4
 
   # Wat de ketel krijgt opgelegd zolang de bijstook geblokkeerd is. 10 °C houdt
   # hem koud - dat is de waarde die Atlantic zelf ook schreef. Hoger zetten laat
@@ -1169,9 +1249,38 @@ binary_sensor:
       sorting_group_id: grp_wp
       sorting_weight: 12
 
-  # "Defrost" tijdelijk verwijderd: de byte die we ervoor gebruikten (ID1 idx4)
-  # bleek gewoon een bedrijfsstatus (0x01 zodra de unit draait). Zodra de echte
-  # defrost-byte gevonden is komt deze sensor terug.
+  # Ontdooien - afgeleid, niet uit het protocol.
+  #
+  # De byte die we er eerder voor gebruikten (ID1 idx4) bleek gewoon een
+  # bedrijfsstatus: 0x01 zodra de unit draait. Die is dus onbruikbaar, en de
+  # echte defrost-byte hebben we nog niet gevonden.
+  #
+  # Nodig is hij ook niet. Bij ontdooien keert de vierwegklep om en wordt de
+  # platenwisselaar de verdamper: de unit haalt dan warmte UIT het water in
+  # plaats van erin te stoppen. De aanvoer zakt daarmee onder de retour, en dat
+  # is een toestand die verder nergens voorkomt.
+  #
+  # Twee dingen houden hem eerlijk. In KOELBEDRIJF is een negatieve delta juist
+  # normaal - maar dan is het buitenblok de condensor, staat het warm en valt er
+  # niets te ontdooien, dus onderdrukken we de meting gewoon. En de 30 seconden
+  # vertraging vangen de mengtransiënt op die je vlak na uitschakelen ziet: daar
+  # tikte de delta kort aan -0,3 zonder dat er iets omkeerde.
+  - platform: template
+    name: "Ontdooien"
+    id: bs_ontdooien
+    device_class: running
+    icon: mdi:snowflake-melt
+    lambda: |-
+      if (id(wp)->get_cooling()) return false;
+      const float dt = id(wp)->get_delta_t();
+      if (std::isnan(dt)) return false;
+      return dt < -1.0f;
+    filters:
+      - delayed_on: 30s
+      - delayed_off: 60s
+    web_server:
+      sorting_group_id: grp_wp
+      sorting_weight: 13
 
   - platform: template
     name: "Communicatie"
