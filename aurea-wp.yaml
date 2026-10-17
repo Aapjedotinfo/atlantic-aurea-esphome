@@ -118,11 +118,9 @@ interval:
 
   # Waakhond op het stand-plafond.
   #
-  # Dit is de spiegel van de waakhond die een tweede, volgende unit nodig heeft.
-  # Daar vervalt een opdracht naar STAND 0, want een hulpunit die doordraait
-  # terwijl niemand meer kijkt is het gevaar. Hier vervalt een beperking naar
-  # VOL VRIJ, want deze unit houdt je huis warm en stilstand is hier het gevaar.
-  # Allebei faalveilig, elk in de richting die bij zijn rol hoort.
+  # Een plafond dat van buitenaf gezet wordt (bv. door een automation) vervalt
+  # na "Vervaltijd stand-plafond" naar VOL VRIJ: deze unit houdt je huis warm,
+  # en stilstand is hier het gevaar. Vervaltijd 0 = een vast plafond.
   #
   # Zonder dit zou een plafond dat ooit op 4 gezet is daar de hele winter
   # blijven staan als de aansturing wegvalt - met de handrem aan, en niets dat
@@ -861,11 +859,10 @@ number:
       sorting_group_id: grp_instellingen
       sorting_weight: 2
 
-  # Een plafond op de STAND, niet op de temperatuur. Bedoeld om de last te
-  # kunnen verdelen over twee buitenunits: laat je ze allebei op stand 5 lopen
-  # in plaats van eentje op 10, dan draaien beide compressoren op deellast, ligt
-  # hun verdampingstemperatuur hoger en blijft het lamellenblok warmer. Dat
-  # scheelt rijp, en dat is waar het bij twee units om te doen is.
+  # Een plafond op de STAND, niet op de temperatuur. Handig om de unit stiller
+  # te houden (bv. 's nachts), of om stapsgewijs te kijken welke standen jouw
+  # buitenunit echt oppakt: stijgen "Vermogen" en "Compressor" niet meer mee,
+  # dan heeft een hogere stand geen zin.
   #
   # Bewust een PLAFOND en geen stand-commando. De regeling van deze unit blijft
   # zijn eigen setpoint najagen, alleen met een lager dak. Valt de aansturing

@@ -38,11 +38,11 @@ oftewel `arduino:avr:pro:cpu=8MHzatmega328`. Die zet `F_CPU` op 8000000 en
 ```bash
 "/c/Program Files (x86)/Arduino/arduino-builder.exe" -compile \
   -hardware "C:\Program Files (x86)\Arduino\hardware" \
-  -hardware "C:\Users\micha\AppData\Local\Arduino15\packages" \
+  -hardware "%LOCALAPPDATA%\Arduino15\packages" \
   -tools "C:\Program Files (x86)\Arduino\tools-builder" \
   -tools "C:\Program Files (x86)\Arduino\hardware\tools\avr" \
-  -tools "C:\Users\micha\AppData\Local\Arduino15\packages" \
-  -libraries "C:\Users\micha\Documents\Arduino\libraries" \
+  -tools "%LOCALAPPDATA%\Arduino15\packages" \
+  -libraries "%USERPROFILE%\Documents\Arduino\libraries" \
   -fqbn=arduino:avr:pro:cpu=8MHzatmega328 \
   -build-path <bouwmap> \
   avr-bridge/avr-bridge.ino
