@@ -2,6 +2,8 @@
 #include "esphome/core/helpers.h"
 #include "esphome/core/log.h"
 
+#include <cstring>
+
 namespace esphome {
 namespace chofu_wp {
 
@@ -35,6 +37,8 @@ void ChofuWP::dump_config() {
   ESP_LOGCONFIG(TAG, "  Bedrijfsmodus: %s", cooling_ ? "koelen" : "verwarmen");
   ESP_LOGCONFIG(TAG, "  Regeling: delta-T-band %.1f-%.1f°C, max stand %u, stap elke %us", dt_low_,
                 dt_high_, max_stand_, (unsigned) (step_interval_ms_ / 1000));
+  ESP_LOGCONFIG(TAG, "  Stooklijn: %.1f°C bij -10, %.1f°C bij +15, stookgrens %.1f°C", curve_cold_,
+                curve_warm_, heat_limit_);
   this->check_uart_settings(666);
 }
 
@@ -242,22 +246,176 @@ void ChofuWP::build_data2_(uint8_t *out) {
 }
 
 // ═══════════════════════════════════════════════════════════════
-//  Regeling - elke 5s (update_interval). Simpel: aanvoer -> stand.
+//  Regeling - elke 5s (update_interval).
+//  Eerst het doel (uit de modus), dan aanvoer -> stand.
 // ═══════════════════════════════════════════════════════════════
 void ChofuWP::update() { this->run_control_(); }
+
+void ChofuWP::set_reason_(const char *r) {
+  if (strcmp(r, reason_) == 0)
+    return;
+  reason_ = r;
+  ESP_LOGI(TAG, "Regeling: %s", r);
+}
+
+uint8_t ChofuWP::avg_samples_() const {
+  // Eén monster per 10 s. Venster 0 = geen middeling = het laatste monster.
+  if (avg_s_ <= 0.0f)
+    return 1;
+  int n = (int) lroundf(avg_s_ / 10.0f);
+  return (uint8_t) clamp(n, 1, 20);
+}
+
+// Gemiddelde van n monsters, te beginnen "from" monsters terug (0 = nieuwste).
+// Neemt minder monsters als de historie nog korter is; NaN-monsters tellen niet mee.
+float ChofuWP::avg_hist_(const float *h, uint8_t from, uint8_t n) const {
+  if (hist_cnt_ <= from)
+    return NAN;
+  if ((int) from + n > hist_cnt_)
+    n = (uint8_t) (hist_cnt_ - from);
+  float sum = 0.0f;
+  uint8_t cnt = 0;
+  for (uint8_t k = 0; k < n; k++) {
+    const uint8_t idx = (uint8_t) ((hist_idx_ + HIST_N - 1 - from - k) % HIST_N);
+    if (!std::isnan(h[idx])) {
+      sum += h[idx];
+      cnt++;
+    }
+  }
+  return cnt ? sum / cnt : NAN;
+}
+
+float ChofuWP::get_rise_() const {
+  // Gemiddelde van 5 monsters nu tegen 5 monsters ~280 s eerder, omgerekend
+  // naar 300 s. Een enkel monster zou het gezaag van de aanvoer meten.
+  if (hist_cnt_ < 33)
+    return NAN;
+  const float nieuw = avg_hist_(sup_hist_, 0, 5);
+  const float oud = avg_hist_(sup_hist_, 28, 5);
+  if (std::isnan(nieuw) || std::isnan(oud))
+    return NAN;
+  return (nieuw - oud) * 30.0f / 28.0f;
+}
+
+float ChofuWP::get_rate_() const {
+  // Gemiddelde over het venster nu tegen hetzelfde venster 60 s eerder.
+  const uint8_t w = avg_samples_();
+  if (hist_cnt_ < 6 + w)
+    return NAN;
+  const float nieuw = avg_hist_(sup_hist_, 0, w);
+  const float oud = avg_hist_(sup_hist_, 6, w);
+  if (std::isnan(nieuw) || std::isnan(oud))
+    return NAN;
+  return nieuw - oud;
+}
+
+float ChofuWP::get_curve_supply() const {
+  if (std::isnan(t_outside_))
+    return NAN;
+  // Recht tussen (-10, curve_cold_) en (+15, curve_warm_), daarbuiten vast.
+  const float b = clamp(t_outside_, -10.0f, 15.0f);
+  return curve_cold_ + (curve_warm_ - curve_cold_) * (b + 10.0f) / 25.0f;
+}
+
+bool ChofuWP::get_room_fresh() const {
+  return room_ms_ != 0 && !std::isnan(room_temp_) && (millis() - room_ms_) < room_timeout_ms_;
+}
+
+float ChofuWP::target_supply_(uint32_t now) {
+  if (mode_ == MODE_AUTO || cooling_) {
+    // Koelen kent geen stooklijn: dan altijd het vaste setpoint.
+    set_reason_(mode_ == MODE_AUTO ? "vast setpoint" : "koelen: vast setpoint");
+    return setpoint_;
+  }
+
+  if (std::isnan(t_outside_)) {
+    set_reason_("geen buitentemperatuur - unit uit");
+    return NAN;
+  }
+  // Stookgrens met 1 °C hysterese: de buitenvoeler zit op de unit zelf en
+  // beweegt mee met zon en ontdooien.
+  if (t_outside_ >= heat_limit_)
+    above_heat_limit_ = true;
+  else if (t_outside_ < heat_limit_ - 1.0f)
+    above_heat_limit_ = false;
+  if (above_heat_limit_) {
+    set_reason_("boven de stookgrens - geen warmtevraag");
+    return NAN;
+  }
+
+  const float curve = get_curve_supply();
+  if (mode_ == MODE_CURVE) {
+    set_reason_("stooklijn");
+    return curve;
+  }
+
+  // ── Kamertemperatuur ──
+  if (!get_room_fresh()) {
+    room_i_ = 0.0f;
+    room_i_ms_ = 0;
+    set_reason_("kamertemperatuur ontbreekt of is verlopen - unit uit");
+    return NAN;
+  }
+  const float fout = room_target_ - room_temp_;  // > 0 = te koud
+
+  if (room_off_warm_) {
+    if (room_demand_ && fout < -ROOM_HYST)
+      room_demand_ = false;
+    else if (!room_demand_ && fout > ROOM_HYST)
+      room_demand_ = true;
+  } else {
+    room_demand_ = true;
+  }
+
+  // Nastelling: eens per minuut, en alleen zolang er vraag is.
+  if (room_ki_ <= 0.0f) {
+    room_i_ = 0.0f;
+  } else if (room_i_ms_ == 0) {
+    room_i_ms_ = now;
+  } else if (now - room_i_ms_ >= 60000) {
+    const float minuten = (now - room_i_ms_) / 60000.0f;
+    room_i_ms_ = now;
+    const float zonder = curve + room_gain_ * fout + room_i_;
+    // Niet verder oplopen als het doel al tegen een grens zit (anti-windup).
+    const bool vast = (fout > 0 && zonder >= setpoint_max_) || (fout < 0 && zonder <= HEAT_MIN_SUPPLY);
+    if (room_demand_ && !vast)
+      room_i_ = clamp(room_i_ + room_ki_ * fout * minuten, ROOM_I_MIN, ROOM_I_MAX);
+  }
+
+  if (!room_demand_) {
+    set_reason_("kamer warm genoeg - unit uit");
+    return NAN;
+  }
+  set_reason_("kamertemperatuur");
+  return clamp(curve + room_gain_ * fout + room_i_, HEAT_MIN_SUPPLY, setpoint_max_);
+}
 
 void ChofuWP::run_control_() {
   const uint32_t now = millis();
 
+  // Historie van aanvoer en retour bijhouden, ook als hij stilstaat.
+  if (!std::isnan(t_supply_) && (hist_last_ms_ == 0 || now - hist_last_ms_ >= 10000)) {
+    sup_hist_[hist_idx_] = t_supply_;
+    ret_hist_[hist_idx_] = t_return_;
+    hist_idx_ = (uint8_t) ((hist_idx_ + 1) % HIST_N);
+    if (hist_cnt_ < HIST_N)
+      hist_cnt_++;
+    hist_last_ms_ = now;
+  }
+
   // Master-schakelaar uit -> alles uit
   if (!system_on_) {
     stand_ = 0;
+    sp_eff_ = NAN;
+    set_reason_("systeem uit");
     return;
   }
 
   // Handmatige modus -> stand rechtstreeks
-  if (!auto_mode_) {
+  if (mode_ == MODE_MANUAL) {
     stand_ = clamp<uint8_t>(manual_stand_, 0, max_stand_);
+    sp_eff_ = NAN;
+    set_reason_("handmatig");
     return;
   }
 
@@ -266,22 +424,66 @@ void ChofuWP::run_control_() {
     if (stand_ != 0)
       ESP_LOGW(TAG, "Geen geldige communicatie - terug naar stand 0");
     stand_ = 0;
+    set_reason_("geen communicatie met de warmtepomp");
     return;
   }
 
   if (std::isnan(t_supply_) || std::isnan(t_return_))
     return;  // Nog geen data binnen; huidige stand aanhouden
 
+  // Regeltemperaturen: gemiddeld over het middelingsvenster; zonder venster of
+  // zonder historie de ruwe waarde.
+  float rs = t_supply_;
+  float rr = t_return_;
+  if (avg_s_ > 0.0f) {
+    const float rs_gem = avg_hist_(sup_hist_, 0, avg_samples_());
+    const float rr_gem = avg_hist_(ret_hist_, 0, avg_samples_());
+    if (!std::isnan(rs_gem)) rs = rs_gem;
+    if (!std::isnan(rr_gem)) rr = rr_gem;
+  }
+
+  // ── Het doel ──
+  // Alleen richting MEER vraag schuift het geleidelijk; minder vraag gaat direct.
+  // Na stilstand begint het schuiven bij de huidige aanvoer, anders ziet een
+  // koude start meteen het hele verschil als fout en schakelt hij door naar een
+  // stand waar hij later doorheen schiet.
+  const float doel = this->target_supply_(now);
+  if (std::isnan(doel)) {
+    sp_eff_ = NAN;
+  } else if (slew_c_per_min_ <= 0.0f) {
+    sp_eff_ = doel;
+  } else {
+    if (std::isnan(sp_eff_))
+      sp_eff_ = cooling_ ? fmaxf(doel, rs) : fminf(doel, rs);
+    const float max_stap = slew_c_per_min_ * (float) (now - sp_eff_ms_) / 60000.0f;
+    if (cooling_)
+      sp_eff_ = doel < sp_eff_ ? fmaxf(doel, sp_eff_ - max_stap) : doel;
+    else
+      sp_eff_ = doel > sp_eff_ ? fminf(doel, sp_eff_ + max_stap) : doel;
+    // Nooit beginnen onder de huidige aanvoer (bij koelen: erboven). Na een
+    // herstart stond het doel op een oud bewaard setpoint (17-10-2026: 20 °C
+    // terwijl de aanvoer 22 was); van daaruit oplopen hield de unit minutenlang
+    // stil zonder dat dat ergens tegen beschermde.
+    if (cooling_)
+      sp_eff_ = fminf(sp_eff_, fmaxf(doel, rs));
+    else
+      sp_eff_ = fmaxf(sp_eff_, fminf(doel, rs));
+  }
+  sp_eff_ms_ = now;
+
   // Koelen keert alles om: dan wil je de aanvoer juist OMLAAG naar het
   // setpoint, en is de retour warmer dan de aanvoer. Door beide grootheden
   // mode-afhankelijk te definiëren blijft de regel-tabel hieronder identiek:
   // err > 0 = meer vermogen nodig, dt = hoeveel de WP daadwerkelijk verzet.
-  const float dt = cooling_ ? (t_return_ - t_supply_) : (t_supply_ - t_return_);
-  const float err = cooling_ ? (t_supply_ - setpoint_) : (setpoint_ - t_supply_);
+  // Geen vraag (doel NaN) telt als "veel te warm": rustig afbouwen naar 0.
+  const float sp = sp_eff_;
+  const float dt = cooling_ ? (rr - rs) : (rs - rr);
+  const float err = std::isnan(sp) ? -100.0f : (cooling_ ? (rs - sp) : (sp - rs));
   const float band = 0.3f;                       // dode zone rond setpoint
 
   // Absolute vorstbeveiliging bij koelen (default 5°C, onder de fabrieksgrens
-  // van 6.5°C - zit legitiem bedrijf dus nooit in de weg).
+  // van 6.5°C - zit legitiem bedrijf dus nooit in de weg). Op de eigen, ruwe
+  // aanvoer: een gemiddelde zou te laat zijn.
   if (cooling_ && t_supply_ < cooling_min_supply_) {
     if (stand_ != 0)
       ESP_LOGW(TAG, "Koelen: aanvoer %.1f°C te laag - stop", t_supply_);
@@ -303,27 +505,82 @@ void ChofuWP::run_control_() {
       dir = -1;
   }
 
+  // ── Vooruitkijken ──
+  // De compressor werkt traag door: een stand later is de aanvoer pas echt
+  // anders, en bij stand 3-4 stijgt hij 1-2 °C per minuut. Wachten tot hij
+  // boven het setpoint zit is dan te laat.
+  bool vroeg_remmen = false;
+  if (lookahead_min_ > 0.0f && !std::isnan(sp)) {
+    const float rate = get_rate_();
+    if (!std::isnan(rate)) {
+      const float rs_verwacht = rs + rate * lookahead_min_;
+      const float err_verwacht = cooling_ ? (rs_verwacht - sp) : (sp - rs_verwacht);
+      if (dir > 0 && stand_ > 0 && err_verwacht <= band) {
+        dir = 0;                                      // komt er vanzelf: niet nog een stand erbij
+      } else if (dir <= 0 && stand_ > 1 && err_verwacht < -BRAKE_OVERSHOOT_K) {
+        dir = -1;                                     // schiet ruim door: nu al een stand terug
+        vroeg_remmen = true;
+      }
+    }
+  }
+
+  // ── Nog aan het opwarmen? Dan niet opschakelen ──
+  // Stijgt de aanvoer nog flink, dan werkt de vorige stap nog door; wachten
+  // voorkomt dat hij doorschakelt terwijl het water gewoon nog opwarmt.
+  // Bij koelen telt dalen als "stijgen".
+  if (dir > 0 && stand_ > 0 && rise_limit_ > 0.0f) {
+    float rise = get_rise_();
+    if (cooling_ && !std::isnan(rise))
+      rise = -rise;
+    if (!std::isnan(rise) && rise > rise_limit_) {
+      if (!rise_holding_)
+        ESP_LOGI(TAG, "AUTO: aanvoer verandert nog %.1f in 5 min (grens %.1f) - stand %u vasthouden",
+                 rise, rise_limit_, stand_);
+      rise_holding_ = true;
+      dir = 0;
+    } else {
+      rise_holding_ = false;
+    }
+  } else {
+    rise_holding_ = false;
+  }
+
   // ── Stap-modulatie: max ±1 stand per step_interval (niet volgas) ──
-  if (dir != 0 && (now - last_step_ms_) >= step_interval_ms_) {
+  // Uitzondering: van stilstand naar stand 1 hoeft hoogstens 60 s te wachten.
+  // Met een lange interval (bv. 300 s) zou hij anders tot vijf minuten stil
+  // blijven staan terwijl er vraag is; de rustige opbouw daarna blijft gewoon
+  // gelden. Die 60 s na de vorige stap voorkomt dat hij direct na het
+  // afschakelen weer aanslaat.
+  uint32_t wacht = (stand_ == 0 && dir > 0 && step_interval_ms_ > 60000) ? 60000 : step_interval_ms_;
+  // Omlaag mag sneller, maar nooit naar 0: stoppen blijft de gewone interval houden.
+  if (dir < 0 && stand_ > 1 && down_interval_ms_ > 0 && down_interval_ms_ < wacht)
+    wacht = down_interval_ms_;
+  if (dir != 0 && (now - last_step_ms_) >= wacht) {
     int ns = clamp((int) stand_ + dir, 0, (int) max_stand_);
     if ((uint8_t) ns != stand_) {
       stand_ = (uint8_t) ns;
       last_step_ms_ = now;
-      ESP_LOGI(TAG, "AUTO: aanvoer %.1f/%.1f (fout %.1f) dT %.1f -> stand %u", t_supply_,
-               setpoint_, err, dt, stand_);
+      if (std::isnan(sp))
+        ESP_LOGI(TAG, "AUTO: geen vraag (%s) -> stand %u", reason_, stand_);
+      else if (vroeg_remmen)
+        ESP_LOGI(TAG, "AUTO: aanvoer %.1f/%.1f stijgt %.1f/min, verwacht %.1f over %.1f min -> eerder terug naar %u",
+                 rs, sp, get_rate_(), rs + get_rate_() * lookahead_min_, lookahead_min_, stand_);
+      else
+        ESP_LOGI(TAG, "AUTO: aanvoer %.1f/%.1f (fout %.1f) dT %.1f -> stand %u", rs, sp, err, dt, stand_);
     }
   }
+  // Plafond vanuit HA verlaagd: direct eronder, niet stap voor stap.
+  if (stand_ > max_stand_)
+    stand_ = max_stand_;
 }
 
 // ═══════════════════════════════════════════════════════════════
-//  Setters
+//  Setters - loggen alleen als er werkelijk iets verandert. Automations
+//  zetten deze vaak elke minuut opnieuw; anders verdrinkt de ene regel die
+//  ertoe doet tussen honderden waarin niets gebeurt.
 // ═══════════════════════════════════════════════════════════════
 void ChofuWP::set_setpoint(float v) {
   const float nieuw = clamp(v, setpoint_min_, setpoint_max_);
-  // Alleen melden als er werkelijk iets verandert. Sinds het bijstookbeleid
-  // deze setters elke 30 s aanroept zou loggen-bij-elke-aanroep een log vol
-  // regels opleveren waarin niets gebeurt - en dan zie je de ene regel die er
-  // wel toe doet niet meer staan.
   if (fabsf(nieuw - setpoint_) < 0.05f)
     return;
   setpoint_ = nieuw;
@@ -336,6 +593,7 @@ void ChofuWP::set_cooling(bool c) {
   cooling_ = c;
   stand_ = 0;          // Altijd via stand 0 wisselen, nooit vliegend omkeren
   last_step_ms_ = 0;   // Mag daarna direct weer opbouwen
+  sp_eff_ = NAN;       // Het schuiven begint opnieuw, nu de andere kant op
   ESP_LOGI(TAG, "Bedrijfsmodus: %s", c ? "KOELEN" : "verwarmen");
 }
 
@@ -346,11 +604,22 @@ void ChofuWP::set_system_on(bool on) {
   ESP_LOGI(TAG, "Systeem: %s", on ? "AAN" : "UIT");
 }
 
-void ChofuWP::set_auto_mode(bool a) {
-  if (a == auto_mode_)
+void ChofuWP::set_mode(Mode m) {
+  if (m == mode_)
     return;
-  auto_mode_ = a;
-  ESP_LOGI(TAG, "Modus: %s", a ? "auto" : "handmatig");
+  mode_ = m;
+  room_i_ = 0.0f;      // De nastelling begint bij elke modewissel opnieuw
+  room_i_ms_ = 0;
+  room_demand_ = true;
+  static const char *const NAMEN[] = {"auto (vast setpoint)", "stooklijn", "kamertemperatuur", "handmatig"};
+  ESP_LOGI(TAG, "Modus: %s", NAMEN[m]);
+}
+
+void ChofuWP::set_room_temp(float v) {
+  room_temp_ = v;
+  room_ms_ = millis();
+  if (room_ms_ == 0)   // 0 betekent "nooit gezet"
+    room_ms_ = 1;
 }
 
 void ChofuWP::set_manual_stand(int s) {
@@ -359,8 +628,7 @@ void ChofuWP::set_manual_stand(int s) {
   // laat 'm toe, de code knipt 'm af en de WP rapporteert netjes de lagere
   // stand terug - wat makkelijk te lezen is als "de unit kan niet hoger".
   if (s != (int) manual_stand_)
-    ESP_LOGW(TAG, "Stand %d gevraagd maar begrensd op %u (max_stand). Verhoog max_stand in de YAML.",
-             s, manual_stand_);
+    ESP_LOGW(TAG, "Stand %d gevraagd maar begrensd op %u (Maximale stand).", s, manual_stand_);
 }
 
 }  // namespace chofu_wp

@@ -56,46 +56,35 @@ external_components:
 #  TX (GPIO17) -> pin 26 (naar WP), rechtstreeks op de driver-trap.
 # ─────────────────────────────────────────────────────────────────
 uart:
-  - id: wp_uart
-    rx_pin: GPIO16
-    tx_pin: GPIO17
-    baud_rate: 666
+  id: wp_uart
+  rx_pin: GPIO16
+  tx_pin: GPIO17
+  baud_rate: 666
 
 chofu_wp:
   id: wp
   uart_id: wp_uart
   update_interval: 5s   # Regelcyclus
-  # Regeling (defaults zijn bewust rustig; zelden nodig aan te passen):
+  # Bijna alles stel je in vanuit de webpagina of Home Assistant (groep
+  # "Instellingen"). Dit zijn de vaste grenzen:
   # dt_low: 4.0          # onderkant gezonde delta-T-band (°C)
-  # dt_high: 8.0         # bovenkant: boven deze delta-T niet verder opstoken
-  max_stand: 10         # mag tot 10: het origineel kende stand 1-10.
-                        # ONBEWEZEN voor elke buitenunit - verhoog stapsgewijs
-                        # en kijk of "Vermogen" en "Compressor" meestijgen.
-  # step_interval: 120s  # max ±1 stand per 2 min (niet volgas)
+  # setpoint_min: 6.5    # bereik van het aanvoersetpoint (Chofu-datasheet)
+  # setpoint_max: 60.0
+  # cooling_min_supply: 5.0  # vorstbeveiliging bij koelen
 
 logger:
 
-# LET OP als je GEEN Home Assistant gebruikt.
+# Native API voor Home Assistant.
 #
-# ESPHome herstart dit apparaat als er `reboot_timeout` lang geen API-client
-# verbindt. Die staat standaard op 15 minuten en is bedoeld om een vastgelopen
-# wifi-stack te herstellen.
-#
-# Maar de webinterface telt daar NIET voor mee: die draait op poort 80 en staat
-# los van de native API op 6053. Bedien je alles via de webpagina, dan herstart
-# hij dus elk kwartier - en omdat "Systeem" na een herstart uit staat, valt je
-# warmtepomp daarmee ook elk kwartier stil. In de log zie je dan:
-#
-#   [E][api:152]: No clients; rebooting
-#
-# Uitzetten met `reboot_timeout: 0s` hieronder. Gebruik je wel Home Assistant,
-# laat het dan zoals het is; dan is die waakhond juist nuttig.
-#
-# (Verwarrend: `esphome logs` verbindt zelf over die API, dus zolang je naar de
-#  logs kijkt loopt de teller niet.)
+# ESPHome herstart het apparaat standaard als er 15 minuten geen API-client
+# verbonden is. Zonder Home Assistant (bediening via de webpagina, of HA ligt
+# er even uit) zou hij dan elk kwartier herstarten - de webpagina telt daar
+# niet voor mee. Daarom staat die waakhond hier uit. Een vastgelopen wifi
+# vangt de wifi-waakhond al op (die herstart na 15 min zonder netwerk).
 api:
   encryption:
     key: !secret api_encryption
+  reboot_timeout: 0s
 
 ota:
   platform: esphome
@@ -107,30 +96,35 @@ wifi:
     ssid: "${friendly_name}_Hotspot"
     password: !secret fallback_password
 
-# web_server versie 3 groepeert de entiteiten. Minder groepen dan in de
-# volledige opstelling, want er is geen thermostaat- of ketelkant.
+captive_portal:
+
+# De webpagina op http://aurea-wp.local - werkt ook zonder Home Assistant.
+# Versie 3 met groepen: de groep vertelt waar iets bij hoort, dus de namen
+# hoeven dat niet meer te doen.
 web_server:
   port: 80
   version: 3
   sorting_groups:
+    - id: grp_regeling
+      name: "Regeling"
+      sorting_weight: 10
     - id: grp_wp
       name: "Warmtepomp"
-      sorting_weight: 10
+      sorting_weight: 20
+    - id: grp_stooklijn
+      name: "Stooklijn en kamertemperatuur"
+      sorting_weight: 30
     - id: grp_instellingen
       name: "Instellingen"
-      sorting_weight: 20
+      sorting_weight: 40
     - id: grp_diag
       name: "Diagnose"
-      sorting_weight: 30
-    - id: grp_systeem
-      name: "Apparaat"
-      sorting_weight: 40
+      sorting_weight: 50
 
+# Tijd uit het netwerk, niet uit Home Assistant: werkt dus ook zonder.
 time:
-  - platform: homeassistant
-    id: homeassistant_time
-
-captive_portal:
+  - platform: sntp
+    id: sntp_time
 
 # Blauwe onboard LED van de MH-ET MiniKit als status-LED
 status_led:
@@ -138,12 +132,47 @@ status_led:
     number: GPIO2
 
 # ═══════════════════════════════════════════════════════════════
-#  BEDIENING
+#  REGELING
 # ═══════════════════════════════════════════════════════════════
+#
+# De warmtepomp krijgt altijd een gewenste AANVOERtemperatuur en kiest zelf
+# de stand. Waar die temperatuur vandaan komt bepaalt de modus:
+#
+#   auto        "Setpoint aanvoer", vast.
+#   stooklijn   Uit de buitentemperatuur (de voeler op de buitenunit), met de
+#               twee stooklijnpunten. Boven de stookgrens geen warmtevraag.
+#   kamertemperatuur  De stooklijn, plus een correctie op een kamertemperatuur
+#               die jij aanlevert (zie "Kamertemperatuur extern"). Zonder verse
+#               kamertemperatuur gaat de unit UIT.
+#   handmatig   Geen regeling: een vaste stand ("Handmatige stand").
+#
+# Koelen gebruikt altijd het vaste setpoint, ook in stooklijn/kamertemperatuur.
+
+select:
+  - platform: template
+    name: "Modus"
+    id: sel_modus
+    options: ["auto", "stooklijn", "kamertemperatuur", "handmatig"]
+    initial_option: "auto"
+    optimistic: true
+    restore_value: true
+    icon: mdi:refresh-auto
+    on_value:
+      then:
+        - lambda: |-
+            using esphome::chofu_wp::ChofuWP;
+            if (x == "stooklijn") id(wp)->set_mode(ChofuWP::MODE_CURVE);
+            else if (x == "kamertemperatuur") id(wp)->set_mode(ChofuWP::MODE_ROOM);
+            else if (x == "handmatig") id(wp)->set_mode(ChofuWP::MODE_MANUAL);
+            else id(wp)->set_mode(ChofuWP::MODE_AUTO);
+    web_server:
+      sorting_group_id: grp_regeling
+      sorting_weight: 2
 
 number:
-  # PRIMAIRE KNOP: "geef me constant water op X°C" - de controller kiest
-  # zelf de stand (0 t/m max_stand) om die aanvoertemperatuur te halen.
+  # ── Regeling ──
+
+  # "Geef me constant water op X°C" (modus auto, en altijd bij koelen).
   - platform: template
     name: "Setpoint aanvoer"
     id: n_setpoint
@@ -162,8 +191,8 @@ number:
       then:
         - lambda: 'id(wp)->set_setpoint(x);'
     web_server:
-      sorting_group_id: grp_wp
-      sorting_weight: 1
+      sorting_group_id: grp_regeling
+      sorting_weight: 3
 
   # Handmatige override: zet zelf de stand (werkt alleen in modus "handmatig").
   - platform: template
@@ -180,12 +209,195 @@ number:
       then:
         - lambda: 'id(wp)->set_manual_stand((int) x);'
     web_server:
-      sorting_group_id: grp_wp
+      sorting_group_id: grp_regeling
       sorting_weight: 4
 
-  # Hoe snel de regeling mag bijsturen: maximaal ±1 stand per interval.
+  # ── Stooklijn en kamertemperatuur ──
+
+  # De kamertemperatuur voor modus kamertemperatuur. Deze moet je zelf aanleveren,
+  # met een sensor naar keuze, en dat REGELMATIG: ook als hij niet verandert.
+  # Blijft hij langer weg dan de verlooptijd, dan gaat de unit uit.
+  #
+  #   Home Assistant: een automation die number.set_value aanroept bij elke
+  #                   verandering van je sensor én elke 5 minuten
+  #                   (voorbeeld in de README).
+  #   Zonder HA:      POST http://aurea-wp.local/number/Kamertemperatuur%20extern/set?value=20.5
+  #                   (vanuit Node-RED, Domoticz, een script, ...).
+  - platform: template
+    name: "Kamertemperatuur extern"
+    id: n_room_temp
+    min_value: -10
+    max_value: 40
+    step: 0.1
+    unit_of_measurement: "°C"
+    mode: box
+    icon: mdi:home-thermometer
+    # set_action en geen on_value: on_value vuurt alleen bij een VERANDERING,
+    # en een kamer die gelijk blijft moet ook als vers tellen.
+    set_action:
+      - lambda: |-
+          id(wp)->set_room_temp(x);
+          id(n_room_temp)->publish_state(x);
+    web_server:
+      sorting_group_id: grp_stooklijn
+      sorting_weight: 1
+
+  - platform: template
+    name: "Gewenste kamertemperatuur"
+    id: n_room_target
+    min_value: 5
+    max_value: 30
+    step: 0.5
+    initial_value: 20
+    optimistic: true
+    restore_value: true
+    unit_of_measurement: "°C"
+    mode: box
+    icon: mdi:home-thermometer-outline
+    on_value:
+      then:
+        - lambda: 'id(wp)->set_room_target(x);'
+    web_server:
+      sorting_group_id: grp_stooklijn
+      sorting_weight: 2
+
+  # Hoeveel graden aanvoer erbij (of eraf) per graad dat de kamer te koud
+  # (of te warm) is. Zoals de kamerinvloed van een Anna of Remeha.
+  - platform: template
+    name: "Kamerinvloed"
+    id: n_room_gain
+    min_value: 0
+    max_value: 15
+    step: 0.5
+    initial_value: 4
+    optimistic: true
+    restore_value: true
+    unit_of_measurement: "°C/°C"
+    mode: box
+    icon: mdi:home-import-outline
+    entity_category: config
+    on_value:
+      then:
+        - lambda: 'id(wp)->set_room_gain(x);'
+    web_server:
+      sorting_group_id: grp_stooklijn
+      sorting_weight: 4
+
+  # Kamerinvloed alleen blijft altijd een beetje naast het doel zitten. De
+  # nastelling telt per minuut zoveel graden aanvoer op per graad fout, tot de
+  # kamer er is (begrensd op -8 .. +12). 0 = uit. Begin klein, bv. 0,1.
+  - platform: template
+    name: "Kamer-nastelling"
+    id: n_room_ki
+    min_value: 0
+    max_value: 1
+    step: 0.05
+    initial_value: 0
+    optimistic: true
+    restore_value: true
+    unit_of_measurement: "°C/°C·min"
+    mode: box
+    icon: mdi:sigma
+    entity_category: config
+    on_value:
+      then:
+        - lambda: 'id(wp)->set_room_integral(x);'
+    web_server:
+      sorting_group_id: grp_stooklijn
+      sorting_weight: 5
+
+  # Hoe lang een kamertemperatuur geldig blijft zonder nieuwe waarde.
+  - platform: template
+    name: "Verlooptijd kamertemperatuur"
+    id: n_room_timeout
+    min_value: 5
+    max_value: 240
+    step: 5
+    initial_value: 30
+    optimistic: true
+    restore_value: true
+    unit_of_measurement: "min"
+    mode: box
+    icon: mdi:timer-sand
+    entity_category: config
+    on_value:
+      then:
+        - lambda: 'id(wp)->set_room_timeout((uint32_t) (x * 60000));'
+    web_server:
+      sorting_group_id: grp_stooklijn
+      sorting_weight: 7
+
+  # De stooklijn: twee punten, recht ertussen, daarbuiten vast.
+  # Radiatoren: grofweg 50-55 bij -10 en 30-35 bij +15.
+  # Vloerverwarming: grofweg 35 bij -10 en 25 bij +15.
+  - platform: template
+    name: "Stooklijn aanvoer bij -10 °C"
+    id: n_curve_cold
+    min_value: 20
+    max_value: 60
+    step: 0.5
+    initial_value: 50
+    optimistic: true
+    restore_value: true
+    unit_of_measurement: "°C"
+    mode: box
+    icon: mdi:snowflake-thermometer
+    entity_category: config
+    on_value:
+      then:
+        - lambda: 'id(wp)->set_curve_cold(x);'
+    web_server:
+      sorting_group_id: grp_stooklijn
+      sorting_weight: 10
+
+  - platform: template
+    name: "Stooklijn aanvoer bij +15 °C"
+    id: n_curve_warm
+    min_value: 20
+    max_value: 60
+    step: 0.5
+    initial_value: 30
+    optimistic: true
+    restore_value: true
+    unit_of_measurement: "°C"
+    mode: box
+    icon: mdi:sun-thermometer-outline
+    entity_category: config
+    on_value:
+      then:
+        - lambda: 'id(wp)->set_curve_warm(x);'
+    web_server:
+      sorting_group_id: grp_stooklijn
+      sorting_weight: 11
+
+  # Boven deze buitentemperatuur geen warmtevraag (zomerstand). Weer aan als
+  # het 1 °C kouder is.
+  - platform: template
+    name: "Stookgrens buiten"
+    id: n_heat_limit
+    min_value: 5
+    max_value: 30
+    step: 0.5
+    initial_value: 18
+    optimistic: true
+    restore_value: true
+    unit_of_measurement: "°C"
+    mode: box
+    icon: mdi:weather-sunny-alert
+    entity_category: config
+    on_value:
+      then:
+        - lambda: 'id(wp)->set_heating_limit(x);'
+    web_server:
+      sorting_group_id: grp_stooklijn
+      sorting_weight: 12
+
+  # ── Instellingen van de regeling ──
+
+  # Hoe snel de regeling mag opschakelen: maximaal +1 stand per interval.
   # Lang (120s) = rustig, compressorvriendelijk bij verwarmen.
   # Kort (30-45s) = kordaat, handig bij koelen waar de traagheid je tegenwerkt.
+  # Van stilstand naar stand 1 wacht hij nooit langer dan 60 s.
   - platform: template
     name: "Stap-interval"
     id: n_step_interval
@@ -204,45 +416,189 @@ number:
         - lambda: 'id(wp)->set_step_interval((uint32_t) (x * 1000));'
     web_server:
       sorting_group_id: grp_instellingen
-      sorting_weight: 2
+      sorting_weight: 1
 
-select:
+  # Terugschakelen boven stand 1 hoeft niet de volle stap-interval te wachten:
+  # omlaag is de veilige kant. Stoppen (1 -> 0) houdt wel de gewone interval.
   - platform: template
-    name: "Modus"
-    options: ["auto", "handmatig"]
-    initial_option: "auto"
+    name: "Stap-interval omlaag"
+    id: n_down_interval
+    min_value: 10
+    max_value: 300
+    step: 5
+    initial_value: 30
     optimistic: true
-    icon: mdi:refresh-auto
+    restore_value: true
+    unit_of_measurement: "s"
+    mode: box
+    icon: mdi:timer-cog-outline
+    entity_category: config
     on_value:
       then:
-        - lambda: 'id(wp)->set_auto_mode(x == "auto");'
+        - lambda: 'id(wp)->set_down_interval((uint32_t) (x * 1000));'
     web_server:
-      sorting_group_id: grp_wp
+      sorting_group_id: grp_instellingen
       sorting_weight: 2
 
+  # Een plafond op de stand. Het origineel kent stand 1 t/m 10 (een
+  # telegramtabel in de Atlantic-firmware), maar dat is NIET bewezen voor
+  # elke buitenunit. Verhoog stapsgewijs en kijk of "Vermogen" en
+  # "Compressor" meestijgen; blijven die vlak, dan pakt jouw unit de hogere
+  # standen niet op. Ook handig om de unit 's nachts stiller te houden.
+  - platform: template
+    name: "Maximale stand"
+    id: n_max_stand
+    min_value: 1
+    max_value: 10
+    step: 1
+    initial_value: 10
+    optimistic: true
+    restore_value: true
+    mode: slider
+    icon: mdi:speedometer-slow
+    entity_category: config
+    on_value:
+      then:
+        - lambda: 'id(wp)->set_max_stand((int) x);'
+    web_server:
+      sorting_group_id: grp_instellingen
+      sorting_weight: 3
+
+  # Onder het setpoint niet opschakelen boven deze delta T, rond het setpoint
+  # terugschakelen erboven. Een grote delta T is prima zolang de warmte kwijt
+  # kan; hoog zetten (bv. 20) = praktisch uit.
+  - platform: template
+    name: "Delta-T-grens"
+    id: n_dt_high
+    min_value: 4
+    max_value: 30
+    step: 0.5
+    initial_value: 8
+    optimistic: true
+    restore_value: true
+    unit_of_measurement: "°C"
+    mode: box
+    icon: mdi:thermometer-lines
+    entity_category: config
+    on_value:
+      then:
+        - lambda: 'id(wp)->set_dt_high(x);'
+    web_server:
+      sorting_group_id: grp_instellingen
+      sorting_weight: 4
+
+  # De regeling kijkt naar het gemiddelde van aanvoer en retour over zoveel
+  # seconden. De aanvoer zaagt bij draaiende compressor ongeveer elke minuut
+  # 3-4 °C; een enkele meting op het moment van een stap is dan toeval.
+  # 0 = ruwe waarden. Maximaal 200.
+  - platform: template
+    name: "Middeling aanvoer"
+    id: n_avg_window
+    min_value: 0
+    max_value: 200
+    step: 10
+    initial_value: 120
+    optimistic: true
+    restore_value: true
+    unit_of_measurement: "s"
+    mode: box
+    icon: mdi:chart-bell-curve
+    entity_category: config
+    on_value:
+      then:
+        - lambda: 'id(wp)->set_avg_window(x);'
+    web_server:
+      sorting_group_id: grp_instellingen
+      sorting_weight: 5
+
+  # Vooruitkijken. De compressor werkt traag door: bij stand 3-4 stijgt de
+  # aanvoer 1-2 °C per minuut, en wachten tot hij boven het setpoint zit is
+  # dan te laat. Met dit aantal minuten wordt de aanvoer beoordeeld zoals hij
+  # verwacht wordt: komt hij er vanzelf, dan niet nog een stand erbij; schiet
+  # hij ruim door, dan eerder een stand terug. Alleen vanaf stand 2. 0 = uit.
+  - platform: template
+    name: "Vooruitkijktijd aanvoer"
+    id: n_lookahead
+    min_value: 0
+    max_value: 5
+    step: 0.5
+    initial_value: 2
+    optimistic: true
+    restore_value: true
+    unit_of_measurement: "min"
+    mode: box
+    icon: mdi:chart-timeline-variant
+    entity_category: config
+    on_value:
+      then:
+        - lambda: 'id(wp)->set_lookahead(x);'
+    web_server:
+      sorting_group_id: grp_instellingen
+      sorting_weight: 6
+
+  # Niet opschakelen zolang de aanvoer in de laatste 5 minuten meer dan dit
+  # gestegen is: de vorige stap werkt dan nog door. 0 = uit.
+  - platform: template
+    name: "Opschakelen pas onder stijging"
+    id: n_rise_limit
+    min_value: 0
+    max_value: 5
+    step: 0.1
+    initial_value: 1.0
+    optimistic: true
+    restore_value: true
+    unit_of_measurement: "°C/5min"
+    mode: box
+    icon: mdi:chart-line-variant
+    entity_category: config
+    on_value:
+      then:
+        - lambda: 'id(wp)->set_rise_limit(x);'
+    web_server:
+      sorting_group_id: grp_instellingen
+      sorting_weight: 7
+
+  # Het doel schuift hooguit zoveel °C per minuut naar MEER vraag toe; minder
+  # vraag gaat direct. Zonder dit duwt een sprong van 5 °C in het setpoint de
+  # unit meteen naar stand 3-4, en schiet de aanvoer door. 0 = uit.
+  - platform: template
+    name: "Setpoint-oploop per minuut"
+    id: n_sp_slew
+    min_value: 0
+    max_value: 5
+    step: 0.5
+    initial_value: 1
+    optimistic: true
+    restore_value: true
+    unit_of_measurement: "°C/min"
+    mode: box
+    icon: mdi:slope-uphill
+    entity_category: config
+    on_value:
+      then:
+        - lambda: 'id(wp)->set_setpoint_slew(x);'
+    web_server:
+      sorting_group_id: grp_instellingen
+      sorting_weight: 8
+
 switch:
-  # Master aan/uit. Niet persistent: na een herstart staat het systeem altijd
-  # UIT. Een ESP32 die om wat voor reden dan ook opnieuw opkomt hoort niet
-  # ongevraagd de compressor te starten - aanzetten is een bewuste handeling.
+  # Master aan/uit. Na een herstart altijd weer aan.
   - platform: template
     name: "Systeem"
     optimistic: true
-    restore_mode: ALWAYS_OFF
+    restore_mode: ALWAYS_ON
     icon: mdi:power
     turn_on_action:
       - lambda: 'id(wp)->set_system_on(true);'
     turn_off_action:
       - lambda: 'id(wp)->set_system_on(false);'
     web_server:
-      sorting_group_id: grp_wp
-      sorting_weight: 3
+      sorting_group_id: grp_regeling
+      sorting_weight: 1
 
-  # Koelbedrijf: data2 byte 4 wordt 0x02 in plaats van 0x01. Aantoonbaar
-  # werkend op deze hardware, ook al heeft Atlantic het zelf nooit gebruikt.
-  # Staat na een herstart altijd weer op verwarmen.
-  #
-  # LET OP: onder het dauwpunt gaan niet-geïsoleerde leidingen en radiatoren
-  # condenseren. Houd het setpoint boven het BINNEN-dauwpunt, ~17 °C.
+  # Koelbedrijf (data2 byte 4 = 0x02 i.p.v. 0x01), op echte hardware getest.
+  # Staat na een reboot altijd weer op verwarmen. Let op condensvorming op
+  # niet-geïsoleerde CV-leidingen en radiatoren.
   - platform: template
     name: "Koelen"
     optimistic: true
@@ -254,8 +610,25 @@ switch:
     turn_off_action:
       - lambda: 'id(wp)->set_cooling(false);'
     web_server:
-      sorting_group_id: grp_instellingen
-      sorting_weight: 1
+      sorting_group_id: grp_regeling
+      sorting_weight: 5
+
+  # Kamertemperatuur: unit uit zodra de kamer 0,2 °C boven het doel komt, weer aan
+  # als hij 0,2 °C eronder zakt. Uit = de stooklijn blijft altijd gelden en
+  # alleen de kamerinvloed schuift hem op (zoals een Anna).
+  - platform: template
+    name: "Uit als de kamer warm is"
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_OFF
+    entity_category: config
+    icon: mdi:home-thermometer
+    turn_on_action:
+      - lambda: 'id(wp)->set_room_off_when_warm(true);'
+    turn_off_action:
+      - lambda: 'id(wp)->set_room_off_when_warm(false);'
+    web_server:
+      sorting_group_id: grp_stooklijn
+      sorting_weight: 6
 
   # Diagnose: zet de ruwe FRAME-hexlog aan/uit (standaard uit). Handig bij
   # sleutelen aan de bekabeling; laat 'm normaal uit voor een schone log.
@@ -271,20 +644,45 @@ switch:
       - lambda: 'id(wp)->set_raw_debug(false);'
     web_server:
       sorting_group_id: grp_diag
-      sorting_weight: 2
+      sorting_weight: 1
 
 button:
+  # Wist de opgeslagen wifi en alle instellingen en herstart. Daarna start hij
+  # met de eigen hotspot, zoals nieuw. Handig voor je hem doorgeeft.
+  - platform: factory_reset
+    name: "Fabrieksinstellingen"
+    entity_category: config
+    icon: mdi:restore-alert
+    web_server:
+      sorting_group_id: grp_diag
+      sorting_weight: 30
+
   - platform: restart
     name: "Restart ${friendly_name}"
     web_server:
-      sorting_group_id: grp_systeem
-      sorting_weight: 1
+      sorting_group_id: grp_diag
+      sorting_weight: 2
 
 # ═══════════════════════════════════════════════════════════════
 #  UITLEZEN
 # ═══════════════════════════════════════════════════════════════
 
 sensor:
+  # ── Regeling ──
+  - platform: template
+    name: "Doel aanvoer"
+    lambda: 'return id(wp)->get_effective_setpoint();'  # NaN = geen vraag
+    update_interval: 10s
+    unit_of_measurement: "°C"
+    device_class: temperature
+    state_class: measurement
+    accuracy_decimals: 1
+    icon: mdi:target
+    web_server:
+      sorting_group_id: grp_regeling
+      sorting_weight: 6
+
+  # ── Warmtepomp ──
   - platform: template
     name: "Aanvoer"
     lambda: 'return id(wp)->get_supply();'
@@ -295,7 +693,7 @@ sensor:
     accuracy_decimals: 1
     web_server:
       sorting_group_id: grp_wp
-      sorting_weight: 5
+      sorting_weight: 1
 
   - platform: template
     name: "Retour"
@@ -307,7 +705,7 @@ sensor:
     accuracy_decimals: 1
     web_server:
       sorting_group_id: grp_wp
-      sorting_weight: 6
+      sorting_weight: 2
 
   - platform: template
     name: "Delta T"
@@ -316,10 +714,9 @@ sensor:
     unit_of_measurement: "°C"
     state_class: measurement
     accuracy_decimals: 1
-    entity_category: diagnostic
     web_server:
       sorting_group_id: grp_wp
-      sorting_weight: 7
+      sorting_weight: 3
 
   - platform: template
     name: "Buiten"
@@ -331,7 +728,7 @@ sensor:
     accuracy_decimals: 1
     web_server:
       sorting_group_id: grp_wp
-      sorting_weight: 8
+      sorting_weight: 4
 
   - platform: template
     name: "Stand"
@@ -341,7 +738,7 @@ sensor:
     icon: mdi:gauge
     web_server:
       sorting_group_id: grp_wp
-      sorting_weight: 9
+      sorting_weight: 5
 
   - platform: template
     name: "Vermogen"
@@ -353,7 +750,7 @@ sensor:
     accuracy_decimals: 0
     web_server:
       sorting_group_id: grp_wp
-      sorting_weight: 10
+      sorting_weight: 6
 
   - platform: template
     name: "Compressor"
@@ -364,20 +761,34 @@ sensor:
     icon: mdi:sine-wave
     web_server:
       sorting_group_id: grp_wp
-      sorting_weight: 11
+      sorting_weight: 7
 
+  # ── Stooklijn en kamertemperatuur ──
+  - platform: template
+    name: "Stooklijn aanvoer"
+    lambda: 'return id(wp)->get_curve_supply();'
+    update_interval: 60s
+    unit_of_measurement: "°C"
+    device_class: temperature
+    state_class: measurement
+    accuracy_decimals: 1
+    icon: mdi:chart-line
+    web_server:
+      sorting_group_id: grp_stooklijn
+      sorting_weight: 9
+
+  # ── Diagnose ──
   - platform: uptime
     name: ${name} Uptime
     web_server:
-      sorting_group_id: grp_systeem
-      sorting_weight: 2
-
+      sorting_group_id: grp_diag
+      sorting_weight: 10
   - platform: wifi_signal
     name: ${name} WiFi Signal
     update_interval: 120s
     web_server:
-      sorting_group_id: grp_systeem
-      sorting_weight: 3
+      sorting_group_id: grp_diag
+      sorting_weight: 11
 
 binary_sensor:
   - platform: template
@@ -386,10 +797,38 @@ binary_sensor:
     device_class: running
     web_server:
       sorting_group_id: grp_wp
-      sorting_weight: 12
+      sorting_weight: 8
 
-  # Fail-safe: >60 s zonder geldig telegram -> terug naar stand 0. Valt deze
-  # weg, dan is het de bekabeling of de buitenunit, niet de regeling.
+  # Ontdooien - afgeleid, niet uit het protocol (de echte defrost-byte is nog
+  # niet gevonden). Bij ontdooien keert de vierwegklep om en haalt de unit
+  # warmte UIT het water: de aanvoer zakt onder de retour, en dat komt verder
+  # nergens voor. Bij koelen is dat juist normaal, dus dan altijd uit. De 30 s
+  # vertraging vangt de mengtransiënt vlak na uitschakelen op.
+  - platform: template
+    name: "Ontdooien"
+    device_class: running
+    icon: mdi:snowflake-melt
+    lambda: |-
+      if (id(wp)->get_cooling()) return false;
+      const float dt = id(wp)->get_delta_t();
+      if (std::isnan(dt)) return false;
+      return dt < -1.0f;
+    filters:
+      - delayed_on: 30s
+      - delayed_off: 60s
+    web_server:
+      sorting_group_id: grp_wp
+      sorting_weight: 9
+
+  - platform: template
+    name: "Kamertemperatuur ontvangen"
+    lambda: 'return id(wp)->get_room_fresh();'
+    device_class: connectivity
+    entity_category: diagnostic
+    web_server:
+      sorting_group_id: grp_stooklijn
+      sorting_weight: 3
+
   - platform: template
     name: "Communicatie"
     lambda: 'return id(wp)->get_comm_ok();'
@@ -397,15 +836,38 @@ binary_sensor:
     entity_category: diagnostic
     web_server:
       sorting_group_id: grp_diag
-      sorting_weight: 1
+      sorting_weight: 3
 
 text_sensor:
+  # Waarom de regeling doet wat hij doet: "stooklijn", "boven de stookgrens",
+  # "kamertemperatuur ontbreekt of is verlopen - unit uit", enz.
+  - platform: template
+    name: "Regeling"
+    lambda: 'return std::string(id(wp)->get_reason());'
+    update_interval: 10s
+    icon: mdi:information-outline
+    web_server:
+      sorting_group_id: grp_regeling
+      sorting_weight: 7
+
   - platform: version
     name: ${name} ESPHome Version
+    web_server:
+      sorting_group_id: grp_diag
+      sorting_weight: 12
   - platform: wifi_info
     ip_address:
       name: ${name} IP
+      web_server:
+        sorting_group_id: grp_diag
+        sorting_weight: 13
     ssid:
       name: ${name} SSID
+      web_server:
+        sorting_group_id: grp_diag
+        sorting_weight: 14
     bssid:
       name: ${name} BSSID
+      web_server:
+        sorting_group_id: grp_diag
+        sorting_weight: 15

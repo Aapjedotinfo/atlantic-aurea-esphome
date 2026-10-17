@@ -185,7 +185,7 @@ void AureaLink::update() {
                     (this->sa_flame_ ? 0x40 : 0) | (this->force_sa_ ? 0x80 : 0));
   b[2] = (uint8_t) ((this->inv_tx_stat_ ? 0x01 : 0) | (this->inv_tx_boiler_ ? 0x02 : 0) |
                     (this->swap_ch_ ? 0x04 : 0) | (this->relay_follows_ ? 0x08 : 0) |
-                    (this->demand_enabled_ ? 0x10 : 0));
+                    (this->demand_enabled_ ? 0x10 : 0) | (this->ch_off_ ? 0x20 : 0));
   b[3] = (uint8_t) lroundf(this->brake_setpoint_);
   b[4] = (uint8_t) (this->wp_supply_ >> 8);
   b[5] = (uint8_t) this->wp_supply_;
@@ -197,7 +197,7 @@ void AureaLink::update() {
   b[11] = this->sa_modulation_;
   b[12] = this->test_out_;
   b[13] = this->boiler_setpoint_;
-  b[14] = 0;   // reserve
+  b[14] = this->max_mod_;   // 0 = niet ingrijpen
   b[15] = sum8_(b, CMD_LEN - 1);
   this->write_array(b, CMD_LEN);
 }
@@ -207,6 +207,26 @@ void AureaLink::set_brake(bool on) {
     return;
   this->brake_on_ = on;
   ESP_LOGI(TAG, "Rem %s", on ? "aan - ketel wordt afgeknepen" : "uit - ketel mag leveren");
+}
+
+void AureaLink::set_ch_off(bool on) {
+  if (on == this->ch_off_)
+    return;
+  this->ch_off_ = on;
+  ESP_LOGI(TAG, "CV-vlag naar de ketel %s", on ? "onderdrukt - ketelpomp blijft stil" : "doorgegeven");
+}
+
+void AureaLink::set_max_modulation(float pct) {
+  // 100 of meer (of NaN) is geen begrenzing; 0 is voor de brug "niet ingrijpen",
+  // dus het minimum dat we doorgeven is 1 %.
+  uint8_t v = (std::isnan(pct) || pct >= 100.0f) ? 0 : (uint8_t) clamp(lroundf(pct), 1L, 99L);
+  if (v == this->max_mod_)
+    return;
+  this->max_mod_ = v;
+  if (v)
+    ESP_LOGI(TAG, "Maximale ketelmodulatie %u %%", v);
+  else
+    ESP_LOGI(TAG, "Ketelmodulatie weer vrij");
 }
 
 void AureaLink::set_brake_setpoint(float c) {

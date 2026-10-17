@@ -35,6 +35,7 @@ IC2-voet leeg, dan ligt er een uitgeklede variant klaar als
 | ESP32 in IC1 | ✅ | ✅ |
 | Eigen chip in IC2 | — (voet blijft leeg) | ✅ ATmega328P |
 | Warmtepomp aansturen | ✅ volledig | ✅ volledig |
+| Stooklijn / kamertemperatuur | ✅ (kamer via HA of HTTP) | ✅ (kamer van de OT-thermostaat, of HA/HTTP) |
 | Thermostaat & CV-ketel | los aansturen, zoals voorheen | via de OpenTherm-brug |
 | Extra bedrading | alleen GPIO16/17 | + een deler op GPIO19 |
 
@@ -243,40 +244,129 @@ zenden en álle lange frames sloopt. Je herkent dat probleem aan `0x19`-bytes
 
 ## Regeling
 
-Bewust simpel: **"geef me X°C aanvoer" → de controller kiest zelf de stand**,
-op basis van de aanvoerfout én de **delta-T** (aanvoer − retour).
+**"Geef me X°C aanvoer" → de controller kiest zelf de stand.** Waar die X
+vandaan komt kies je met **Modus**:
 
-| Aanvoer t.o.v. setpoint | Delta-T | Actie |
+| Modus | Doel aanvoer |
+|---|---|
+| `auto` | **Setpoint aanvoer**. Met *Thermostaat stuurt warmtepomp* aan zet de OpenTherm-thermostaat dat: haar aanvoervraag (Data-ID 1) |
+| `stooklijn` | uit de buitentemperatuur (de voeler op de buitenunit) |
+| `kamertemperatuur` | stooklijn + correctie op de kamertemperatuur: van de OpenTherm-thermostaat als die er is, anders uit *Kamertemperatuur extern* |
+| `handmatig` | geen regeling, een vaste stand (**Handmatige stand**) |
+
+Koelen gebruikt altijd het vaste setpoint. De sensor **Doel aanvoer** laat zien
+waar de regeling op dat moment op mikt, en de tekstsensor **Regeling** waarom
+("stooklijn", "boven de stookgrens", …).
+
+Het **bijstookbeleid** (ketel blokkeren, bijspringen bij tekort) werkt in alle
+modi behalve handmatig, zolang *Thermostaat stuurt warmtepomp* aan staat. In
+`stooklijn` en `kamertemperatuur` bepaalt de warmtepomp zelf wanneer er
+warmtevraag is; de thermostaat is dan niet nodig.
+
+### Van doel naar stand
+
+Op basis van de aanvoerfout én de **delta-T** (aanvoer − retour):
+
+| Aanvoer t.o.v. doel | Delta-T | Actie |
 |---|---|---|
-| Te koud | laag (< dt_high) | stand **omhoog** |
-| Te koud | al hoog (≥ dt_high) | **houden** — retour warmt vanzelf op |
-| Rond setpoint | hoog (> dt_high) | stand **omlaag** |
-| Rond setpoint | in band | **houden** |
+| Te koud | laag (< Delta-T-grens) | stand **omhoog** |
+| Te koud | al hoog (≥ Delta-T-grens) | **houden** — retour warmt vanzelf op |
+| Rond doel | hoog (> Delta-T-grens) | stand **omlaag** |
+| Rond doel | in band | **houden** |
 | Te warm | — | stand **omlaag** |
 
 Delta-T is hier bewust een **rem**, geen gaspedaal: bij een koude start is delta-T
-van nature hoog, en dan nóg meer vermogen geven zou overschieten. Daarbovenop
-**stap-modulatie** (max ±1 stand per interval) zodat de compressor niet volgas
-gaat. Geen stooklijn.
+van nature hoog, en dan nóg meer vermogen geven zou overschieten. Daarbovenop:
 
-Bij **koelen** keert de regeling om: dan is de fout `aanvoer − setpoint` en de
-delta-T `retour − aanvoer`, waardoor dezelfde tabel blijft gelden. Het
-stap-interval is instelbaar in Home Assistant — 120 s is rustig en
-compressorvriendelijk voor verwarmen, maar bij koelen werkt die traagheid je
-tegen (je schiet voorbij het setpoint); 30–45 s regelt daar strakker.
+- **Stap-modulatie**: max +1 stand per *Stap-interval* (standaard 120 s), zodat
+  de compressor niet volgas gaat. Van stilstand naar stand 1 wacht hij nooit
+  langer dan 60 s. Terugschakelen gaat sneller (*Stap-interval omlaag*, 30 s),
+  behalve de laatste stap naar 0.
+- **Middeling**: de aanvoer zaagt bij draaiende compressor ~3-4 °C per minuut.
+  De regeling kijkt daarom naar het gemiddelde over 120 s, niet naar één meting.
+- **Vooruitkijken**: bij stand 3-4 stijgt de aanvoer 1-2 °C per minuut. De
+  regeling beoordeelt de aanvoer zoals hij over 2 minuten verwacht wordt: komt
+  hij er vanzelf, dan geen stand erbij; schiet hij ruim door, dan eerder terug.
+- **Niet opschakelen zolang de aanvoer nog stijgt** (> 1 °C in 5 min): de vorige
+  stap werkt dan nog door.
+- **Setpoint-oploop**: het doel schuift hooguit 1 °C per minuut omhoog; omlaag
+  gaat direct. Een sprong in het setpoint duwt de unit zo niet in één keer naar
+  een hoge stand.
+
+Allemaal instelbaar in de groep **Instellingen**; 0 zet een functie uit.
+
+Bij **koelen** keert de regeling om: dan is de fout `aanvoer − doel` en de
+delta-T `retour − aanvoer`, waardoor dezelfde tabel blijft gelden.
 
 **Setpoint-bereik: 6,5 – 60 °C**, het volledige technische bereik uit de
 Chofu-datasheet (*Operating Range / Leaving Water Temperature*: koelen `6.5℃~`,
 verwarmen `~60℃`). Atlantic noemt 55 °C, maar dat is hun overdrachtspunt naar de
 gasketel — geen hardwarelimiet.
 
-Overige parameters (`dt_low`, `dt_high`, `max_stand`, `setpoint_min/max`,
-`cooling_min_supply`) staan als opties in `aurea-wp.yaml` onder `chofu_wp:`.
+**Maximale stand warmtepomp**: het origineel kent stand 1 t/m 10, maar dat is
+niet voor elke buitenunit bewezen. Verhoog stapsgewijs en kijk of *Vermogen* en
+*Compressor* meestijgen. Met *Vervaltijd stand-plafond* op 0 blijft een plafond
+staan; anders valt hij na die tijd terug naar vol vrij.
 
-**Na een herstart staat het systeem uit.** Een ESP32 die om wat voor reden dan
-ook opnieuw opkomt hoort niet ongevraagd de compressor te starten; aanzetten is
-een bewuste handeling. De OpenTherm-brug blijft ondertussen gewoon doorgeven, dus
-je CV valt daar niet mee stil.
+**Systeem** is een vrijgave en staat na een herstart weer zoals hij stond
+(standaard aan). Met de koppeling aan beslist de thermostaat wannéér de
+warmtepomp draait; uit betekent warmtepomp stil.
+
+### Stooklijn
+
+Twee punten: de aanvoer bij **−10 °C** en bij **+15 °C** buiten, met een rechte
+lijn ertussen en daarbuiten vast. Grofweg 50 / 30 voor radiatoren, 35 / 25 voor
+vloerverwarming. Boven de **Stookgrens buiten** (18 °C) is er geen warmtevraag;
+weer aan als het 1 °C kouder is.
+
+### Kamertemperatuur
+
+De stooklijn, plus **Kamerinvloed** × (gewenst − gemeten): bij 4 °C/°C en een
+kamer die een halve graad te koud is komt er 2 °C aanvoer bij. Daar kun je
+desgewenst bij zetten:
+
+- **Kamer-nastelling** (standaard 0 = uit): telt per minuut wat aanvoer op zolang
+  de kamer te koud is, zodat hij het doel ook echt haalt. Begin klein (0,1).
+- **Uit als de kamer warm is** (standaard uit): unit uit zodra de kamer 0,2 °C
+  boven het doel komt, weer aan als hij 0,2 °C eronder zakt. Staat deze uit, dan
+  blijft de stooklijn altijd gelden en schuift de kamer hem alleen op.
+
+Waar de kamertemperatuur vandaan komt:
+
+1. **Een OpenTherm-thermostaat aan de brug** die zijn kamertemperatuur meldt:
+   die, met zijn gewenste temperatuur. Niets in te stellen.
+2. Anders **Kamertemperatuur extern**, met **Gewenste kamertemperatuur extern**
+   als doel. Die moet je zelf aanleveren, en regelmatig, ook als hij niet
+   verandert. Komt er langer dan de *Verlooptijd kamertemperatuur* (30 min)
+   niets, dan gaat de unit **uit**; *Kamertemperatuur ontvangen* laat zien of
+   hij nog vers is.
+
+Met Home Assistant, bijvoorbeeld:
+
+```yaml
+automation:
+  - alias: Kamertemperatuur naar de warmtepomp
+    triggers:
+      - trigger: state
+        entity_id: sensor.woonkamer_temperatuur
+      - trigger: time_pattern
+        minutes: "/5"
+    conditions:
+      - condition: template
+        value_template: "{{ states('sensor.woonkamer_temperatuur') | is_number }}"
+    actions:
+      - action: number.set_value
+        target:
+          entity_id: number.aurea_warmtepomp_kamertemperatuur_extern
+        data:
+          value: "{{ states('sensor.woonkamer_temperatuur') }}"
+```
+
+Zonder Home Assistant gaat het met een HTTP-POST, zie
+[Gebruik je dit zonder Home Assistant?](#gebruik-je-dit-zonder-home-assistant).
+
+Overige vaste grenzen (`dt_low`, `setpoint_min/max`, `cooling_min_supply`) staan
+als opties in `aurea-wp.yaml` onder `chofu_wp:`.
 
 ## Entiteiten
 
@@ -285,18 +375,23 @@ Assistant zie je dezelfde namen.
 
 | Groep | Wat erin zit |
 |---|---|
-| **Warmtepomp** | Setpoint aanvoer, Modus, Systeem, Handmatige stand, Aanvoer, Retour, Delta T, Buiten, Stand, Vermogen, Compressor, Actief |
+| **Warmtepomp** | Setpoint aanvoer, Doel aanvoer, Regeling, Modus, Systeem, Handmatige stand, Aanvoer, Retour, Delta T, Buiten, Stand, Vermogen, Compressor, Actief, Ontdooien |
 | **Thermostaat** | Kamertemperatuur, Gewenste kamertemperatuur, Warmtevraag, Tapwatervraag, Thermostaat op afstand, Verbonden |
+| **Stooklijn en kamertemperatuur** | Kamertemperatuur extern, Gewenste kamertemperatuur extern, Kamertemperatuur ontvangen, Kamerinvloed, Kamer-nastelling, Uit als de kamer warm is, Verlooptijd kamertemperatuur, Stooklijn aanvoer bij −10 / +15 °C, Stookgrens buiten, Stooklijn aanvoer |
 | **CV-ketel** | Keteltemperatuur, Ketelretour, Ketel delta T, Ketelmodulatie, Gevraagd ketelsetpoint, Setpoint naar de ketel, CV actief, Tapwater actief, Vlam, Ketelstoring, Verbonden, Ketelsetpoint zonder thermostaat, Waterdruk CV, Tapwatertemperatuur |
-| **Bijstookbeleid** | Thermostaat stuurt warmtepomp, Bijstook blokkeren, Bijstook geblokkeerd, Ketelsetpoint in rust, Tekort warmtepomp, Bijstookreden, Maximale aanvoer warmtepomp, Wachttijd voor bijstook, Bijstook pas onder buitentemperatuur, Ketelsetpoint bij bijstook, Comfort gaat voor gas besparen, WP-temperaturen tonen |
-| **Instellingen** | Koelen, Stap-interval, Statuslampje |
-| **Diagnose** | Brug verbonden, Brug herstarts, Brug gemiste berichten, Communicatie, Noodbrug aangetrokken, Keteltype (dipswitch), OT Data-ID's gezien, Debug frames |
+| **Bijstookbeleid** | Thermostaat stuurt warmtepomp, Bijstook blokkeren, Bijstook geblokkeerd, Ketelsetpoint in rust, Tekort warmtepomp, Bijstookreden, Maximale aanvoer warmtepomp, Extra aanvoer boven de thermostaat, Wachttijd voor bijstook, Bijstook pas onder buitentemperatuur, Ketelsetpoint bij bijstook, Maximale ketelmodulatie, Comfort gaat voor gas besparen, WP-temperaturen tonen |
+| **Instellingen** | Koelen, Stap-interval, Stap-interval omlaag, Maximale stand warmtepomp, Vervaltijd stand-plafond, Delta-T-grens, Middeling aanvoer, Vooruitkijktijd aanvoer, Opschakelen pas onder stijging, Setpoint-oploop per minuut, Statuslampje |
+| **Diagnose** | Brug verbonden, Brug herstarts, Brug gemiste berichten, Communicatie, Noodbrug aangetrokken, Keteltype (dipswitch), CV-only-schakelaar, Testknop, OT Data-ID's gezien, Debug frames |
 | **Apparaat** | Restart, Uptime, WiFi Signal |
 
 *Onder **CV-ketel** staat `Gevraagd ketelsetpoint` (wat de thermostaat vraagt)
 naast `Setpoint naar de ketel` (wat de brug ervan maakt); het verschil is de
 blokkade. `Waterdruk CV` en `Tapwatertemperatuur` staan op NA omdat deze ketel
 die Data-ID's niet beantwoordt.*
+
+*De **CV-only-schakelaar** en de **Testknop** zijn de twee bedieningselementen
+op de voorkant van de controlbox (voetpen 23 en 24 van IC1). Je kunt er in Home
+Assistant automations aan hangen.*
 
 Twee dingen om te weten over **Diagnose**:
 
@@ -390,41 +485,35 @@ relatief aan de yaml.
 
 ## Gebruik je dit zonder Home Assistant?
 
-Zet dan `reboot_timeout` uit. ESPHome heeft in het `api:`-blok een waakhond die
-**standaard op 15 minuten** staat: verbindt er in die tijd geen enkele
-API-client, dan herstart het apparaat. Bedoeld om een vastgelopen wifi-stack te
-herstellen, maar hij kent maar één soort client.
+Dat kan. Alles werkt via de webpagina op `http://aurea-wp.local`, instellingen
+worden in de ESP zelf bewaard en de tijd komt via SNTP.
 
-**De webinterface telt niet mee.** Die draait op poort 80 en staat los van de
-native API op 6053. Bedien je alles via de webpagina en heb je het apparaat nooit
-in Home Assistant toegevoegd, dan herstart hij dus elk kwartier — eindeloos. En
-omdat `Systeem` na een herstart uit staat, valt je warmtepomp daarmee elk
-kwartier stil.
-
-In de log ziet dat er zo uit:
-
-```
-[E][api:152]: No clients; rebooting
-[I][app:264]: Forcing a reboot
-```
-
-Uitzetten:
+ESPHome heeft in het `api:`-blok een waakhond die **standaard op 15 minuten**
+staat: verbindt er in die tijd geen enkele API-client, dan herstart het apparaat.
+**De webinterface telt daar niet mee** — die draait op poort 80 en staat los van
+de native API op 6053. Zonder Home Assistant zou hij dus elk kwartier herstarten.
+Daarom staat die waakhond in deze yaml uit:
 
 ```yaml
 api:
   reboot_timeout: 0s
-  encryption:
-    key: !secret api_encryption
 ```
 
-> **Verwarrend detail:** `esphome logs` verbindt zelf over die API. Zolang je naar
-> de logs kijkt staat de teller stil en gebeurt er niets. Sluit je de terminal,
-> dan loopt hij weer. Het probleem verdwijnt dus precies wanneer je ernaar kijkt.
+Een vastgelopen wifi vangt de wifi-waakhond nog steeds op (herstart na 15
+minuten zonder netwerk).
 
-Gebruik je Home Assistant wél en zie je die melding toch? Dan verbindt HA niet.
-Controleer of het apparaat er als device in staat, of `api_encryption` in je
-`secrets.yaml` overeenkomt met wat HA heeft opgeslagen, en kijk naar de sensor
-`WiFi Signal` — rond of onder −80 dBm helpt geen enkele instelling.
+De kamertemperatuur voor modus `kamertemperatuur` (als er geen
+OpenTherm-thermostaat is) zet je met een HTTP-POST, bijvoorbeeld vanuit
+Node-RED, Domoticz of een script:
+
+```bash
+curl -X POST "http://aurea-wp.local/number/Kamertemperatuur%20extern/set?value=20.5"
+```
+
+Gebruik je Home Assistant wél en verbindt hij niet? Controleer of het apparaat
+er als device in staat, of `api_encryption` in je `secrets.yaml` overeenkomt met
+wat HA heeft opgeslagen, en kijk naar de sensor `WiFi Signal` — rond of onder
+−80 dBm helpt geen enkele instelling.
 
 ## Diagnose
 

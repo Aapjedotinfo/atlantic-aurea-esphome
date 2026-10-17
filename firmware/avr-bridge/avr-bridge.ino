@@ -561,6 +561,7 @@ static void ev_flush() {
 #define CMD2_SWAP_CHANNELS    0x04
 #define CMD2_RELAY_FOLLOWS    0x08
 #define CMD2_DEMAND_ENABLE    0x10
+#define CMD2_CH_OFF           0x20
 
 struct Policy {
   bool     brake_on;
@@ -582,6 +583,8 @@ struct Policy {
   bool     relay_cmd;        // stand die Home Assistant vraagt
   bool     relay_follows;    // of het relais in plaats daarvan de dipswitch volgt
   bool     demand_enabled;   // mag K3 de aan/uit-ketel aanzetten?
+  bool     ch_off;           // CV-vlag van de thermostaat niet doorgeven aan de ketel
+  uint8_t  max_mod;          // maximale modulatie naar de ketel in %, 0 = niet ingrijpen
   uint8_t  boiler_setpoint;  // rechtstreeks setpoint naar de ketel, 0 = uit
   uint32_t received_ms;
   bool     valid;
@@ -819,7 +822,9 @@ static void link_poll() {
     policy.relay_cmd     = (buf[1] & CMD_FLAG_RELAY) != 0;
     policy.relay_follows  = (buf[2] & CMD2_RELAY_FOLLOWS) != 0;
     policy.demand_enabled = (buf[2] & CMD2_DEMAND_ENABLE) != 0;
+    policy.ch_off         = (buf[2] & CMD2_CH_OFF) != 0;
     policy.boiler_setpoint = buf[13];
+    policy.max_mod        = buf[14] > 100 ? 100 : buf[14];
     lamp_invert = (buf[1] & CMD_FLAG_LAMP_INV) != 0;
     // Tweede vlaggenbyte. Verandert er iets aan de polariteit of de
     // kanaalindeling, dan meteen de rustniveaus opnieuw zetten.
@@ -854,6 +859,8 @@ static void link_poll() {
     policy.override_setpoint = 0;      // thermostaat mag weer zelf regelen
     policy.force_standalone = false;
     policy.lamp_mode        = 0;       // lampje terug naar automatisch
+    policy.ch_off           = false;   // CV-vlag weer doorgeven
+    policy.max_mod          = 0;       // modulatie weer vrij
   }
 }
 
@@ -981,8 +988,21 @@ static void note_from_boiler(uint32_t f) {
   }
 }
 
-// Onderweg naar de ketel: alleen ID 1 kan worden vervangen.
+// Onderweg naar de ketel: ID 1 (setpoint, bij de rem) en ID 0 (CV-vlag).
 static uint32_t substitute_to_boiler(uint32_t f) {
+  // CV-vlag onderdrukken: dan ziet de ketel geen CV-vraag en blijft ook zijn
+  // pomp stil. Alleen bit 0 van de hoge byte; tapwater (bit 1) gaat gewoon door.
+  // Staat los van de rem en zonder minimale houdtijd: de vlam gaat al via het
+  // setpoint, dit gaat om de pomp. Valt de ESP32 weg, dan vervalt dit vanzelf.
+  if (policy.valid && policy.ch_off &&
+      msg_type(f) == MSG_READ_DATA && data_id(f) == ID_STATUS)
+    return with_parity(f & ~0x00000100UL);
+  // Maximale modulatie (Data-ID 14): stuurt de thermostaat die zelf, dan gaat
+  // onze waarde ervoor in de plaats. Stuurt ze hem niet, dan schiet de ESP32
+  // hem zelf in via de injectie.
+  if (policy.valid && policy.max_mod &&
+      msg_type(f) == MSG_WRITE_DATA && data_id(f) == 14)
+    return replace_value(f, tenths_to_f88((int16_t) (policy.max_mod * 10)));
   if (!brake_applied) return f;
   if (msg_type(f) != MSG_WRITE_DATA || data_id(f) != ID_CONTROL_SETPOINT) return f;
   // Begrenzen voordat we naar f8.8 rekenen: boven 127 graden loopt die

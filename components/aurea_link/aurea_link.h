@@ -149,6 +149,13 @@ class AureaLink : public PollingComponent, public uart::UARTDevice {
   bool get_brake() const { return brake_on_; }
   void set_brake_setpoint(float c);
   float get_brake_setpoint() const { return brake_setpoint_; }
+  // CV-vlag (Data-ID 0, bit 0) van de thermostaat niet doorgeven aan de
+  // ketel. Dan draait ook zijn pomp niet. Tapwater blijft doorgaan.
+  void set_ch_off(bool on);
+  bool get_ch_off() const { return ch_off_; }
+  // Maximale modulatie van de ketel (Data-ID 14) in %. 100 = vrij.
+  void set_max_modulation(float pct);
+  float get_max_modulation() const { return max_mod_ ? max_mod_ : 100.0f; }
   void set_subst_temp(bool on);
   bool get_subst_temp() const { return subst_temp_; }
   // Leesrichting van de OT-ontvangst omkeren. De comparator geeft met de
@@ -313,6 +320,8 @@ class AureaLink : public PollingComponent, public uart::UARTDevice {
   bool inv_tx_stat_{false}, inv_tx_boiler_{false}, swap_ch_{false};
   uint8_t lines_{0}, rx_err_stat_{0}, rx_err_boiler_{0}, io_{0}, boot_{0}, isr_ovr_{0};
   bool relay_follows_{false}, demand_enabled_{false};
+  bool ch_off_{false};
+  uint8_t max_mod_{0};
   uint8_t boiler_setpoint_{0};
   uint8_t spare_in_{0}, test_out_{0};
   float brake_setpoint_{10.0f};
