@@ -404,6 +404,20 @@ kan gebeuren: een resetlus in de AVR, en een verslechterende seriële link.
 Fail-safe aan de warmtepompkant: >60 s zonder geldig telegram → terug naar
 stand 0.
 
+## Schema's
+
+Twee printjes die bij dit project horen, als schema (PDF). Gerbers en
+KiCad-bestanden zijn er niet; teken ze gerust zelf na.
+
+- [`docs/schema/adapter-ic1-schema.pdf`](docs/schema/adapter-ic1-schema.pdf)
+  &mdash; tussenprint voor de IC1-voet: ESP32 MiniKit op de plek van de
+  ATmega8L, met de delers voor RX en de brug, de CV-only-schakelaar en de
+  testknop, en acht extra voetpennen achter losneembare bruggen.
+- [`docs/schema/interfaceprint-buitenunit-schema.pdf`](docs/schema/interfaceprint-buitenunit-schema.pdf)
+  &mdash; losse interface voor een buitenunit zonder controlbox: de
+  stroomlus op klem 2/3 via twee H11D1 naar een ESP32. De buskant hangt
+  galvanisch aan het net; lees de notities op het schema.
+
 ## Structuur
 
 ```
