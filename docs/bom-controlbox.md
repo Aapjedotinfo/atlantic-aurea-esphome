@@ -2,7 +2,7 @@
 
 Onderdelenlijst van de Atlantic Aurea-controlbox, opgebouwd terwijl de print
 wordt doorgemeten. Bedoeld om de warmtepompkant te kunnen **nabouwen** voor een
-tweede buitenunit die zonder controlbox geleverd is.
+buitenunit die zonder controlbox geleverd is.
 
 De kolom **bron** zegt hoe hard een regel is:
 
@@ -150,7 +150,7 @@ DIP-versie pincompatibel met deze SOIC-6 en makkelijker te verwerken.
 | K3 | **Omron G2R-1**, 12 VDC, 10 A wisselcontact | warmtevraagcontact voor een aan/uit-ketel, via T4 vanaf IC2 pin 28 | afgelezen |
 | R27 | **100 &ohm;** | gedeelde voorschakelweerstand van alle drie de relaisspoelen | gemeten |
 
-## Nodig voor unit 2
+## Nodig voor een buitenunit zonder controlbox
 
 Alles hieronder is de **logicakant**, die volledig vastligt. De buskant staat
 nog open en is bewust niet in deze lijst opgenomen &mdash; zie het lege veld
@@ -201,7 +201,7 @@ Communicatie is **666 baud, 8N1**; zie de `chofu_wp`-component.
 
 > Die 5 V-voeding is het **enige** wat je zelf hoeft te leveren. De 18 V-tak uit
 > de trafo was er voor OpenTherm en de relaisspoelen; geen van beide bestaat in
-> de opstelling voor unit 2.
+> deze opstelling.
 
 > Massa van de USB-voeding en de common van de bus **gescheiden houden**. Dat is
 > de scheiding waar die twee optocouplers voor zitten.
