@@ -1,0 +1,169 @@
+<!doctype html>
+<html lang="nl"><head><meta charset="utf-8">
+<title>Installatie ESP32 + AVR-brug (A4)</title>
+<style>
+@page{size:A4;margin:10mm}
+*{box-sizing:border-box}
+body{font:9.5pt/1.3 Arial,Helvetica,sans-serif;color:#111;margin:0}
+h1{font-size:17pt;margin:0 0 2mm}
+h2{font-size:11.5pt;margin:3mm 0 1mm;border-bottom:1.5px solid #333}
+.stop{border:3px solid #c00;background:#fff0f0;padding:2.5mm 3mm;margin:2mm 0}
+.stop b{color:#c00}
+.cols{display:flex;gap:5mm}
+.cols>div{flex:1}
+ol,ul{margin:1mm 0;padding-left:5mm}
+li{margin:.6mm 0}
+table{border-collapse:collapse;width:100%;font-size:9.5pt}
+td,th{border:1px solid #555;padding:.8mm 1.5mm;text-align:left}
+th{background:#eee}
+code{background:#eee;padding:0 1mm}
+.k{font-size:9pt;color:#444}
+svg{display:block;margin:1mm auto}
+.stop2{}</style></head><body>
+
+<h1>Installatie ESP32 + AVR-brug in de Atlantic Aurea-controlbox</h1>
+<div class="k">Spanningsloos werken: stekker eruit, voeding van de controlbox af. Alleen aan de 5 V-kant, niet aan de netspanning-/powerline-delen.</div>
+
+<div class="stop"><b>PIN 1 EERST.</b> Elke chip en elke adapter heeft een <b>pin 1</b>. Staat hij 180° gedraaid, dan werkt het niet en kan er iets stuk gaan.
+Pin 1 vind je aan de <b>kerf (halve maan) of de stip</b> op de chip. Die kerf moet aan dezelfde kant zitten als de kerf/markering van de voet <b>op de print</b>. Leg de chip altijd eerst <i>zonder duwen</i> in de voet en kijk of de kerven op één lijn liggen. Raadpleeg bij twijfel de zeefdruk bij de voet, niet je gevoel.</div>
+
+<div class="cols">
+<div>
+<h2>Pin-nummering (DIP-28, bovenaanzicht)</h2>
+<svg width="215" height="205" viewBox="0 0 215 205" font-family="Arial" font-size="9">
+<rect x="68" y="8" width="64" height="188" fill="#e8e8e8" stroke="#222" stroke-width="1.5"/>
+<path d="M90 8 a10 10 0 0 0 20 0" fill="#fff" stroke="#222" stroke-width="1.5"/>
+<circle cx="78" cy="22" r="3.5" fill="#c00"/>
+<text x="100" y="40" text-anchor="middle" fill="#555">kerf</text>
+<g id="l"></g><g id="r"></g>
+<text x="4" y="17" fill="#c00" font-weight="bold" font-size="10">PIN 1</text>
+<text x="172" y="17" font-size="9">pin 28</text>
+<text x="172" y="198" font-size="9">pin 15</text>
+<text x="20" y="198" font-size="9">pin 14</text>
+</svg>
+<script>
+var L=document.getElementById('l'),R=document.getElementById('r'),s='';
+for(var i=0;i<14;i++){var y=18+i*13.4;
+ s='<rect x="56" y="'+(y-4)+'" width="12" height="8" fill="'+(i==0?'#c00':'#888')+'"/><text x="52" y="'+(y+3)+'" text-anchor="end" font-weight="bold">'+(i+1)+'</text>';
+ L.innerHTML+=s;
+ s='<rect x="132" y="'+(y-4)+'" width="12" height="8" fill="#888"/><text x="148" y="'+(y+3)+'">'+(28-i)+'</text>';
+ R.innerHTML+=s;}
+</script>
+<div class="k">Linkerrij loopt van boven naar beneden (1 → 14), rechterrij van beneden naar boven (15 → 28). Pin 28 staat dus naast pin 1.</div>
+</div>
+
+<div>
+<h2>1. Wat komt waar</h2>
+<table>
+<tr><th>Voet</th><th>Wat erin</th></tr>
+<tr><td><b>IC1</b> (links, warmtepomp)</td><td>Adapterprint met de <b>ESP32</b></td></tr>
+<tr><td><b>IC2</b> (rechts)</td><td><b>ATmega328P-PU</b> met de brug-firmware</td></tr>
+</table>
+<ul>
+<li>Haal beide originele ATmega8L-chips uit hun voet en <b>bewaar ze</b> (terug naar fabrieksstaat = chips terugzetten).</li>
+<li>Chip uit de voet: gebruik een <b>chip puller</b>. Heb je die niet, wip dan met een klein schroevendraaiertje om en om voorzichtig aan beide kanten, zodat de pootjes niet buigen.</li>
+<li><b>Controleer na transport eerst alle pootjes</b> van de AVR en de adapterprint: staan ze netjes recht en parallel, en is er niets omgebogen of ingeklapt? Een scheef pootje bij het indrukken breekt af of buigt onder de chip. Buig het voorzichtig recht (bijv. door de chip op zijn zij tegen een vlak tafelblad te drukken) vóór je plaatst.</li>
+<li>Pootjes uitgelijnd op de gaatjes, dan pas gelijkmatig indrukken.</li>
+</ul>
+</div>
+</div>
+
+<h2>2. Controle vóór het inschakelen</h2>
+<ol>
+<li>Kerf van de adapter én van de AVR ligt aan dezelfde kant als de kerf van de voet; pin 1 klopt.</li>
+<li>Alle pootjes zaten recht vóór het plaatsen (na transport gecontroleerd), en nu zitten alle pinnen in de voet: geen enkel pootje is omgeslagen of buiten de voet gebleven.</li>
+<li><b>Dipswitch 2 op ON</b> (anders knijpt de ketelkant af).</li>
+</ol>
+
+<h2>Aan de thermostaat (Anna e.d.) hoeft niets te veranderen</h2>
+<div class="k" style="color:#111;font-size:inherit">De thermostaat en de ketel blijven exact zo aangesloten als nu: geen draad verleggen, niets instellen op de Anna. De brug zit in de controlbox tussen beide en geeft het gesprek gewoon door. Valt de ESP32 of het netwerk uit, dan schakelt de controlbox de thermostaat rechtstreeks door naar de ketel, dus het huis blijft warm.</div>
+
+<h2>3. Inloggen op de hotspot (eerste keer instellen)</h2>
+<div class="cols"><div>
+<ol>
+<li>Zet de voeding aan en wacht ± 1 minuut.</li>
+<li>Pak telefoon of laptop → wifi-instellingen → kies netwerk <b>Aurea-WP</b>.</li>
+<li>Wachtwoord: <b><code>aureahybrid</code></b>.</li>
+<li>Een inlogpagina (captive portal) opent vanzelf. Doet hij dat niet: open de browser en ga naar <b><code>http://192.168.4.1</code></b>.</li>
+<li>Kies je eigen wifi-netwerk, vul je wachtwoord in en bevestig.</li>
+<li>Het apparaat herstart en verbindt met je router; de hotspot verdwijnt. Daarna verschijnt hij in Home Assistant (ESPHome-integratie, zonder sleutel).</li>
+</ol>
+</div><div>
+<ul>
+<li>Je telefoon meldt "geen internet": blijf verbonden.</li>
+<li>Hotspot niet te zien? Voeding eraf en weer aan; kom niet verder dan een paar meter.</li>
+<li>Komt hij later niet meer op je wifi (router vervangen)? Na 15 min zonder netwerk start de hotspot opnieuw.</li>
+<li class="k">Zelf gecompileerd met je eigen config? Dan heet de hotspot <code>&lt;naam&gt;_Hotspot</code> met het <code>fallback_password</code> uit je secrets.</li>
+</ul>
+</div></div>
+
+<h1 style="page-break-before:always">Controlbox: waar komt wat?</h1>
+<div class="k">Schematisch, gezien van boven met de schroefklemmen (netspanning, buitenunit) <b>onderaan</b>, zoals de box aan de muur hangt. Niet op schaal.</div>
+
+<svg style="width:100%;height:auto" viewBox="0 0 700 470" font-family="Arial" font-size="11">
+<rect x="10" y="10" width="680" height="450" rx="8" fill="#e6f3e6" stroke="#2a6a2a" stroke-width="2"/>
+
+<!-- voeding -->
+<rect x="30" y="30" width="170" height="130" fill="#f0f0f0" stroke="#999" stroke-dasharray="5 3"/>
+<text x="115" y="95" text-anchor="middle" fill="#666">voeding / trafo</text>
+<text x="115" y="110" text-anchor="middle" fill="#666">+ USB-adapter</text>
+
+<!-- ESP adapter IC1 -->
+<rect x="230" y="40" width="150" height="90" rx="4" fill="#cfe0ff" stroke="#1c4fd0" stroke-width="2.5"/>
+<text x="305" y="68" text-anchor="middle" font-weight="bold" font-size="13" fill="#1c4fd0">IC1</text>
+<text x="305" y="84" text-anchor="middle" fill="#1c4fd0">adapterprint + ESP32</text>
+<text x="305" y="100" text-anchor="middle" fill="#1c4fd0" font-size="10">(USB-aansluiting wijst naar rechts)</text>
+<rect x="380" y="62" width="16" height="26" fill="#f5a623" stroke="#8a5a00" stroke-width="2"/>
+<text x="388" y="56" text-anchor="middle" font-size="10" font-weight="bold" fill="#8a5a00">USB</text>
+<path d="M380 140 H115 V160" fill="none" stroke="#f5a623" stroke-width="3" stroke-dasharray="6 3"/>
+<path d="M388 88 V140" fill="none" stroke="#f5a623" stroke-width="3" stroke-dasharray="6 3"/>
+<text x="250" y="156" text-anchor="middle" font-size="10" fill="#8a5a00">USB-kabel van USB-adapter naar de ESP32 (voeding)</text>
+<circle cx="240" cy="120" r="5" fill="#c00"/>
+<text x="248" y="124" fill="#c00" font-weight="bold" font-size="10">pin 1: volg zeefdruk/kerf van de voet</text>
+
+<!-- AVR IC2 -->
+<rect x="440" y="40" width="190" height="62" rx="3" fill="#333" stroke="#000" stroke-width="2"/>
+<path d="M440 60 a9 9 0 0 1 0 22" fill="#fff" stroke="#000"/>
+<text x="540" y="68" text-anchor="middle" fill="#fff" font-weight="bold" font-size="13">IC2 &#8212; ATmega328P</text>
+<text x="540" y="86" text-anchor="middle" fill="#ddd" font-size="10">28 pinnen, kerf links</text>
+<circle cx="452" cy="112" r="6" fill="#c00"/>
+<text x="462" y="127" fill="#c00" font-weight="bold">PIN 1 = linksonder</text>
+<text x="462" y="141" fill="#c00" font-size="10">(kant van de kerf, richting de ESP32)</text>
+<text x="540" y="30" text-anchor="middle" fill="#333" font-size="10">8 MHz-kristal ligt er al onder</text>
+
+<!-- relais en rest -->
+<rect x="500" y="170" width="45" height="75" fill="#bbb" stroke="#666"/><text x="522" y="212" text-anchor="middle" font-size="10">K1</text>
+<rect x="565" y="170" width="45" height="75" fill="#bbb" stroke="#666"/><text x="587" y="212" text-anchor="middle" font-size="10">K2</text>
+<rect x="450" y="255" width="40" height="30" fill="#7ab" stroke="#047"/><text x="470" y="274" text-anchor="middle" font-size="10" fill="#fff">dip</text>
+<text x="470" y="298" text-anchor="middle" font-size="10" fill="#047">dipswitch 2 = ON</text>
+<rect x="520" y="320" width="150" height="55" fill="#f0f0f0" stroke="#999" stroke-dasharray="5 3"/>
+<text x="595" y="345" text-anchor="middle" fill="#666">&#8220;Emergency only&#8221;</text>
+<text x="595" y="360" text-anchor="middle" fill="#666">niets aansluiten</text>
+<rect x="260" y="210" width="110" height="60" fill="#ddd" stroke="#888"/><text x="315" y="244" text-anchor="middle" fill="#666">groot relais</text>
+
+<!-- klemmen -->
+<rect x="30" y="300" width="170" height="40" fill="#555" stroke="#222"/>
+<text x="115" y="325" text-anchor="middle" fill="#fff">4 klemmen buitenunit (230 V)</text>
+<text x="115" y="360" text-anchor="middle" fill="#c00" font-size="10">niet aanraken</text>
+<rect x="215" y="300" width="45" height="30" fill="#3a3" stroke="#161"/><text x="237" y="345" text-anchor="middle" font-size="10">SMILE</text>
+<rect x="275" y="300" width="45" height="30" fill="#3a3" stroke="#161"/><text x="297" y="345" text-anchor="middle" font-size="10">ANNA</text>
+<rect x="335" y="360" width="50" height="30" fill="#3a3" stroke="#161"/>
+<rect x="395" y="360" width="50" height="30" fill="#3a3" stroke="#161"/>
+<text x="390" y="410" text-anchor="middle" font-size="10">klemmen naar ketel / thermostaat</text>
+<text x="390" y="424" text-anchor="middle" font-size="10" fill="#c00">blijven zoals ze zijn</text>
+
+<!-- pijlen -->
+<path d="M395 85 H430" stroke="#c00" stroke-width="2" marker-end="url(#a)"/>
+<defs><marker id="a" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto"><path d="M0 0 L8 4 L0 8z" fill="#c00"/></marker></defs>
+</svg>
+
+<div class="stop"><b>PIN 1 bij IC2 (AVR):</b> de kerf of stip van de chip wijst naar <b>links</b>, naar de ESP32 toe. Pin 1 is de eerste pin links aan de <b>onderste</b> rij. Controleer dit altijd op de zeefdruk bij de voet voordat je indrukt.</div>
+
+<ul>
+<li><b>IC1</b> (links boven): adapterprint met ESP32, <b>USB-poort aan de rechterkant</b> (oranje in het schema). Hierop komt de USB-kabel van de USB-voedingsadapter.</li>
+<li><b>IC2</b> (rechts boven): ATmega328P, kerf links.</li>
+<li>Haal de twee originele ATmega8L-chips eruit en bewaar ze.</li>
+<li>Aan de Anna/Smile-klemmen, de ketel-klemmen en de thermostaatkabels verandert niets.</li>
+</ul>
+<div class="k">De pin-1-zijde van IC2 is afgeleid van de foto van een bestaande opstelling (kerf links). Die van de adapterprint in IC1 volgt de zeefdruk/kerf van de voet; controleer beide op de eigen print.</div>
+</body></html>
