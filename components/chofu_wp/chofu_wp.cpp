@@ -524,6 +524,36 @@ void ChofuWP::run_control_() {
     }
   }
 
+  // ── Stoppen (stand 1 -> 0) met warmtevraag: eerst een tijd achter elkaar willen, en alleen als de
+  // aanvoer na een stop niet meteen weer te laag zou zijn ──
+  // Na een stop zakt de aanvoer binnen ~1 minuut naar de retour. Voorspelde aanvoer over de
+  // vooruitkijktijd: retour + (aanvoer - retour) * exp(-t/60 s). Ligt die onder het setpoint min de dode
+  // zone, dan zou hij meteen weer starten, en dan stopt hij niet. Geen warmtevraag (sp NaN) en koelen
+  // houden het oude gedrag; met "Stopvertraging" op 0 is alles als voorheen.
+  const bool wil_stop = !cooling_ && !std::isnan(sp) && stand_ == 1 && dir < 0;
+  if (wil_stop && stop_delay_ms_ > 0) {
+    if (stop_wish_ms_ == 0)
+      stop_wish_ms_ = now;
+    const float t_min = lookahead_min_ > 0.0f ? lookahead_min_ : 2.0f;
+    const float pred = rr + (rs - rr) * expf(-t_min);   // tau = 60 s: t in minuten is direct de exponent
+    const bool wachten = (now - stop_wish_ms_) < stop_delay_ms_;
+    const bool terug_nodig = pred < sp - band;
+    if (wachten || terug_nodig) {
+      if (!stop_hold_) {
+        ESP_LOGI(TAG, "AUTO: stoppen uitgesteld (%s): aanvoer %.1f/%.1f, voorspeld na stop %.1f",
+                 terug_nodig ? "zou meteen weer nodig zijn" : "eerst stopvertraging", rs, sp, pred);
+        stop_hold_ = true;
+      }
+      dir = 0;
+    } else {
+      stop_hold_ = false;
+    }
+  }
+  if (!wil_stop) {
+    stop_wish_ms_ = 0;
+    stop_hold_ = false;
+  }
+
   // ── Nog aan het opwarmen? Dan niet opschakelen ──
   // Stijgt de aanvoer nog flink, dan werkt de vorige stap nog door; wachten
   // voorkomt dat hij doorschakelt terwijl het water gewoon nog opwarmt.

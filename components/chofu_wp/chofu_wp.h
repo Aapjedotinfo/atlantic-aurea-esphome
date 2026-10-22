@@ -81,6 +81,8 @@ class ChofuWP : public PollingComponent, public uart::UARTDevice {
   // Terugschakelen boven stand 1 hoeft niet de volle stap-interval te wachten:
   // omlaag is de veilige kant. 0 = dezelfde interval als omhoog.
   void set_down_interval(uint32_t ms) { down_interval_ms_ = ms; }
+  // Stand 1 -> 0 met warmtevraag: eerst zo lang achter elkaar willen, en niet voorspeld dat hij terug moet.
+  void set_stop_delay(uint32_t ms) { stop_delay_ms_ = ms; }
   // Het doel schuift hooguit zoveel °C per minuut naar MEER vraag toe; minder
   // vraag gaat direct. Een sprong in het doel duwt de unit zo niet meteen naar
   // een hoge stand waar hij doorheen schiet.
@@ -211,6 +213,9 @@ class ChofuWP : public PollingComponent, public uart::UARTDevice {
   float rise_limit_{0.0f};
   bool rise_holding_{false};
   uint32_t down_interval_ms_{0};
+  uint32_t stop_delay_ms_{0};
+  uint32_t stop_wish_ms_{0};   // sinds wanneer de regeling onafgebroken naar 0 wil (0 = niet)
+  bool stop_hold_{false};      // alleen voor de logregel
   float slew_c_per_min_{0.0f};
   float sp_eff_{NAN};
   uint32_t sp_eff_ms_{0};

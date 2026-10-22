@@ -282,6 +282,12 @@ van nature hoog, en dan nóg meer vermogen geven zou overschieten. Daarbovenop:
   de compressor niet volgas gaat. Van stilstand naar stand 1 wacht hij nooit
   langer dan 60 s. Terugschakelen gaat sneller (*Stap-interval omlaag*, 30 s),
   behalve de laatste stap naar 0.
+- **Stopvertraging** (standaard 10 min, 0 = uit): met warmtevraag stopt de
+  compressor niet meer bij een kleine overschrijding op stand 1. De regeling
+  moet eerst zo lang achter elkaar naar 0 willen, en alleen als de voorspelde
+  aanvoer na een stop (retour + (aanvoer - retour) x e^-t, t = vooruitkijktijd)
+  boven het setpoint zou blijven. Zo gaat hij niet uit om een minuut later
+  weer te starten. Zonder warmtevraag stopt hij direct, zoals voorheen.
 - **Middeling**: de aanvoer zaagt bij draaiende compressor ~3-4 °C per minuut.
   De regeling kijkt daarom naar het gemiddelde over 120 s, niet naar één meting.
 - **Vooruitkijken**: bij stand 3-4 stijgt de aanvoer 1-2 °C per minuut. De
@@ -380,7 +386,7 @@ Assistant zie je dezelfde namen.
 | **Stooklijn en kamertemperatuur** | Kamertemperatuur extern, Gewenste kamertemperatuur extern, Kamertemperatuur ontvangen, Kamerinvloed, Kamer-nastelling, Uit als de kamer warm is, Verlooptijd kamertemperatuur, Stooklijn aanvoer bij −10 / +15 °C, Stookgrens buiten, Stooklijn aanvoer |
 | **CV-ketel** | Keteltemperatuur, Ketelretour, Ketel delta T, Ketelmodulatie, Gevraagd ketelsetpoint, Setpoint naar de ketel, CV actief, Tapwater actief, Vlam, Ketelstoring, Verbonden, Ketelsetpoint zonder thermostaat, Waterdruk CV, Tapwatertemperatuur |
 | **Bijstookbeleid** | Thermostaat stuurt warmtepomp, Bijstook blokkeren, Bijstook geblokkeerd, Ketelsetpoint in rust, Tekort warmtepomp, Bijstookreden, Maximale aanvoer warmtepomp, Extra aanvoer boven de thermostaat, Wachttijd voor bijstook, Bijstook pas onder buitentemperatuur, Ketelsetpoint bij bijstook, Maximale ketelmodulatie, Comfort gaat voor gas besparen, WP-temperaturen tonen |
-| **Instellingen** | Koelen, Stap-interval, Stap-interval omlaag, Maximale stand warmtepomp, Vervaltijd stand-plafond, Delta-T-grens, Middeling aanvoer, Vooruitkijktijd aanvoer, Opschakelen pas onder stijging, Setpoint-oploop per minuut, Statuslampje |
+| **Instellingen** | Koelen, Stap-interval, Stap-interval omlaag, Stopvertraging, Maximale stand warmtepomp, Vervaltijd stand-plafond, Delta-T-grens, Middeling aanvoer, Vooruitkijktijd aanvoer, Opschakelen pas onder stijging, Setpoint-oploop per minuut, Statuslampje |
 | **Diagnose** | Brug verbonden, Brug herstarts, Brug gemiste berichten, Communicatie, Noodbrug aangetrokken, Keteltype (dipswitch), CV-only-schakelaar, Testknop, OT Data-ID's gezien, Debug frames |
 | **Apparaat** | Restart, Uptime, WiFi Signal |
 
