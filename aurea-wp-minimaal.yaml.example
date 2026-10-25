@@ -418,6 +418,30 @@ number:
       sorting_group_id: grp_instellingen
       sorting_weight: 1
 
+  # Stoppen (stand 1 -> 0) terwijl er warmtevraag is: de regeling moet zo lang achter elkaar willen
+  # stoppen en er mag geen voorspelling zijn dat hij meteen weer moet starten (zie chofu_wp.cpp).
+  # Dat houdt de compressor draaiend op de laagste stand in plaats van aan/uit te gaan bij een kleine
+  # overschrijding. 0 = zoals voorheen (stoppen na het gewone stap-interval).
+  - platform: template
+    name: "Stopvertraging"
+    id: n_stop_delay
+    min_value: 0
+    max_value: 60
+    step: 1
+    initial_value: 10
+    optimistic: true
+    restore_value: true
+    unit_of_measurement: "min"
+    mode: box
+    icon: mdi:timer-stop-outline
+    entity_category: config
+    on_value:
+      then:
+        - lambda: 'id(wp)->set_stop_delay((uint32_t) (x * 60000.0f));'
+    web_server:
+      sorting_group_id: grp_instellingen
+      sorting_weight: 3
+
   # Terugschakelen boven stand 1 hoeft niet de volle stap-interval te wachten:
   # omlaag is de veilige kant. Stoppen (1 -> 0) houdt wel de gewone interval.
   - platform: template
