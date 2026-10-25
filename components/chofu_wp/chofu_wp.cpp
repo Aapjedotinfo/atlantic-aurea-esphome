@@ -12,14 +12,14 @@ static const char *const TAG = "chofu_wp";
 // ═══════════════════════════════════════════════════════════════
 //  De 4 roterende zend-telegrammen (controlbox -> warmtepomp)
 //  data0/1/3 zijn vast; data2 wordt per keer opgebouwd (on/off + stand + CRC).
-//  Bytes exact uit de werkende JGC-sketch.
+//  Bytes exact uit de werkende sketches van WackoH (en JGC), zie chofu_wp.h.
 // ═══════════════════════════════════════════════════════════════
 static const uint8_t DATA0[] = {0x19, 0x00, 0x08, 0x00, 0x00, 0x00, 0xD9, 0xB5};
 static const uint8_t DATA1[] = {0x19, 0x01, 0x0C, 0x00, 0x00, 0x00,
                                 0x00, 0x00, 0x00, 0x00, 0xAA, 0x35};
 static const uint8_t DATA3[] = {0x19, 0x03, 0x08, 0xB2, 0x02, 0x00, 0xC1, 0x9A};
 
-// Geldige berichtlengtes vanuit de WP (msgLength = lengtebyte + 1), uit JGC.
+// Geldige berichtlengtes vanuit de WP (msgLength = lengtebyte + 1), uit de sketches van WackoH.
 static const uint8_t VALID_LENGTHS[] = {13, 14, 19, 21};
 
 // ═══════════════════════════════════════════════════════════════
@@ -72,7 +72,7 @@ void ChofuWP::loop() {
 }
 
 // ═══════════════════════════════════════════════════════════════
-//  RX - 0x91 berichten van de warmtepomp, per ID (state machine uit JGC)
+//  RX - 0x91 berichten van de warmtepomp, per ID (state machine uit de sketches van WackoH)
 // ═══════════════════════════════════════════════════════════════
 void ChofuWP::handle_rx_() {
   while (this->available()) {
@@ -226,7 +226,7 @@ void ChofuWP::maybe_send_() {
 
 // data2: 19 02 08 <modus> <stand> 00 <crc_hi> <crc_lo>
 // modus: 0x00 = uit, 0x01 = verwarmen, 0x02 = koelen.
-// LET OP: 0x02 komt uit één forumpost en is niet door JGC gebruikt - het is
+// LET OP: 0x02 komt uit één forumpost en is in de sketches niet gebruikt - het is
 // dus experimenteel. De WP negeert het mogelijk gewoon.
 void ChofuWP::build_data2_(uint8_t *out) {
   out[0] = 0x19;

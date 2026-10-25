@@ -5,10 +5,10 @@
 // ║  Atlantic Aurea 5 Hybrid / Chofu 0x19 protocol @ 666 baud     ║
 // ╚═══════════════════════════════════════════════════════════════╝
 //
-// Protocol-laag 1:1 geport uit de WERKENDE ATmega2560-sketch van _JGC_
-// (Tweakers, v0.1Beta 19-03-2025). Dat is gereverse-engineerde, op echte
-// hardware bewezen code - vandaar dat de frame-opbouw, timing en CRC exact
-// zijn overgenomen. Zie ../../README.md en de memory 'aurea-serieel-protocol'.
+// Protocol-laag 1:1 geport uit de WERKENDE ATmega2560-sketch uit het Tweakers-topic
+// (oorspronkelijk van WackoH, v1.0 02-03-2025 en 0.1Beta 19-03-2025; JGC's bewerking
+// ervan was onze eerste basis). Dat is gereverse-engineerde, op echte hardware bewezen
+// code - vandaar dat de frame-opbouw, timing en CRC exact zijn overgenomen. Zie ../../README.md en de memory 'aurea-serieel-protocol'.
 //
 // De REGELING: "geef me X°C aanvoer" -> deze controller kiest zelf de stand
 // (0 t/m max_stand; met stap-modulatie zodat de compressor niet volgas de
@@ -142,7 +142,7 @@ class ChofuWP : public PollingComponent, public uart::UARTDevice {
   // ── Regeling ──
   void run_control_();
 
-  // Timing-constanten (identiek aan JGC)
+  // Timing-constanten (identiek aan de sketches van WackoH/JGC)
   static const uint32_t SEND_DELAY_MS = 99;           // Zenden 99ms na einde RX
   static const uint32_t SEND_TIMEOUT_MS = 2000;       // Fallback als RX uitblijft
   static const uint32_t MIN_SEND_INTERVAL_MS = 300;   // Min. tijd tussen TX's

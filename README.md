@@ -178,11 +178,13 @@ anders dan je zou verwachten niet symmetrisch gebouwd zijn.
 
 ## Herkomst van het protocol
 
-Het warmtepompprotocol is niet openbaar; het is gereverse-engineerd door de
-forumgebruikers **WackoH** en **_JGC_** in het Tweakers-topic *"Aurea 5 hybrid:
-interfaces met de buitenunit en thermostaat"*. De protocol-laag hier is geport
-uit JGC's werkende ATmega2560-sketch (v0.1Beta, 19-03-2025). Alle credits voor
-het uitpluizen gaan naar hen.
+Het warmtepompprotocol is niet openbaar. Het is gereverse-engineerd door
+forumgebruiker **WackoH** in het Tweakers-topic *"Aurea 5 hybrid: interfaces met de
+buitenunit en thermostaat"*: de vier telegrammen, de commando- en checksumwaarden,
+de hardware-aansluiting en de eerste werkende ATmega2560-sketches (v1.0 van
+02-03-2025 en 0.1Beta van 19-03-2025) komen van hem. **_JGC_** dacht in dat topic
+mee, en zijn bewerking van die code was de eerste basis voor onze protocol-laag.
+Alle credits voor het uitpluizen gaan naar hen, in het bijzonder naar WackoH.
 
 De OpenTherm-kant is daarnaast rechtstreeks uit de originele T1.1-firmware
 gehaald, met een zelfgeschreven AVR-disassembler.
@@ -213,8 +215,8 @@ data3 = 19 03 08 B2 02 00 C1 9A
 | `0x01` | verwarmen |
 | `0x02` | **koelen** — ✅ geverifieerd werkend |
 
-> **Koelen werkt echt.** Op het forum stond `0x02` als onbevestigd en JGC's sketch
-> gebruikte het nooit. Getest op echte hardware: na het commando startte de
+> **Koelen werkt echt.** Op het forum stond `0x02` als onbevestigd en de sketches
+> gebruikten het nooit. Getest op echte hardware: na het commando startte de
 > compressor binnen ~6 s en zakte de aanvoer van 37,8 °C naar 23,8 °C, terwijl de
 > retour op 30,0 °C bleef — delta-T van −6,3 °C, dus de aanvoer werd kouder dan de
 > retour. Dat is onmiskenbaar koelbedrijf.
@@ -564,6 +566,8 @@ af en komt er geen verkeer naar de ketel.
 
 ## Credits
 
-- **WackoH** en **_JGC_** (Tweakers) — reverse-engineering van het
-  warmtepompprotocol.
+- **WackoH** (Tweakers) — reverse-engineering van het warmtepompprotocol
+  en de eerste werkende sketches.
+- **_JGC_** (Tweakers) — meedenken en een eerste werkende versie waar dit
+  project mee begon.
 - Regeling, ESPHome-componenten, de AVR-brug en de documentatie: dit project.
