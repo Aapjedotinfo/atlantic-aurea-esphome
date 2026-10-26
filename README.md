@@ -221,9 +221,11 @@ data3 = 19 03 08 B2 02 00 C1 9A
 > retour op 30,0 °C bleef — delta-T van −6,3 °C, dus de aanvoer werd kouder dan de
 > retour. Dat is onmiskenbaar koelbedrijf.
 
-**Ontvangen (WP → controlbox):** `91 <ID> <len> <data…> <crc_hi> <crc_lo>` — géén
-aparte end-byte; na de CRC volgt meteen het volgende telegram. Een frame is geldig
-als CRC-CCITT over het **hele** frame `0` is. Berekend per bericht-ID (0–3):
+**Ontvangen (WP → controlbox):** `91 <ID> <len> <data…> <crc_hi> <crc_lo> 00` — elk
+bericht eindigt met een **`00`-eindbyte** (gezien op de lijn bij alle 0x91-berichten;
+de lengtebyte + 1 telt hem mee). De CRC staat dus op de twee bytes ervoor. Een frame is
+geldig als CRC-CCITT over het **hele** frame, eindbyte inbegrepen, `0` is (een `00`
+laat de CRC op 0 staan, dus de controle werkt met en zonder). Berekend per bericht-ID (0–3):
 
 - **ID2** — temperaturen, signed 16-bit **little-endian**, /10:
   byte 3-4 = aanvoer, 5-6 = retour, 7-8 = buiten (bv. `ED 00` = 23.7 °C).
