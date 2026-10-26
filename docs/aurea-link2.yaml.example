@@ -1,0 +1,159 @@
+# Voorbeeld voor het component aurea_link2 (AVR-brug v2, protocolversie 2).
+# Legt de nieuwe link uit; het bestaande aurea-wp.yaml blijft op aurea_link.
+# Let op: de AVR moet firmware 2.0.0 draaien (38400 baud). De ESP en de AVR moeten tegelijk wisselen.
+#
+# Protocol: firmware/avr-bridge-v2/PROTOCOL.md
+# Het component staat in components/aurea_link2 (naast aurea_link); kopieer dit voorbeeld naar de
+# projectmap (naast components/), zoals aurea-wp.yaml.
+
+substitutions:
+  name: "aurea-link2-test"
+
+esphome:
+  name: ${name}
+
+esp32:
+  board: mhetesp32minikit
+  framework:
+    type: arduino
+
+logger:
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+
+api:
+
+external_components:
+  - source:
+      type: local
+      path: components   # de map met aurea_link2, naast dit bestand
+    components: [aurea_link2]
+
+uart:
+  - id: avr_uart
+    rx_pin: GPIO19
+    tx_pin: GPIO18
+    baud_rate: 38400        # was 9600 bij v1
+    data_bits: 8
+    parity: NONE
+    stop_bits: 1
+
+aurea_link2:
+  id: otlink
+  uart_id: avr_uart
+  update_interval: 2s       # COMMANDO elke 2 s
+  brake_setpoint: 10        # setpoint dat de rem oplegt (0..90)
+  keteltype: dip            # dip (volgens dipschakelaar 2), opentherm of aan_uit
+  geldigheid: 0s            # 0 = de AVR gebruikt esp_weg_tijd; anders 10..255 s
+
+  # De tijden gaan mee in de TABEL; de grenzen zijn die van het protocol.
+  deadline_antwoord: 250ms  # 30..600 ms: hoe lang de AVR op ons ANTWOORD wacht
+  wachttijd_ketel: 400ms    # 100..600 ms
+  esp_weg_tijd: 60s         # 10..600 s: stilte waarna de AVR ons als weg beschouwt
+  noodbrugtijd: 240s        # 60..1800 s en minstens esp_weg_tijd
+  rem_houdtijd: 300s        # 60..900 s tussen twee wissels van de rem
+  tabelversie: 1            # alleen voor weergave
+
+  # false: alleen de regels hieronder. true: de ingebouwde standaardtabel van de AVR
+  # (10 regels) vooraf, waarbij een eigen regel met dezelfde id en richting hem vervangt.
+  standaardregels: false
+
+  # Per Data-ID en richting (T>K: thermostaat naar ketel, K>T: ketel naar thermostaat)
+  # wat de AVR met het frame doet. Hoogstens 16 actieve regels; een id die er niet
+  # in staat wordt doorgegeven.
+  #   modus: pass | vast | vraag | blokkeer
+  #   conditie: altijd | rem | substitutie | override | ch_off | rem_of_ch_off | max_mod
+  onderscheppen:
+    # Write-Data ID 1 (setpoint) krijgt het rem-setpoint zodra de rem is toegepast.
+    - id: 1
+      richting: T>K
+      modus: vast
+      parameter: rem        # of een 16-bit waarde, of aanvoer, retour, override, max_mod
+      conditie: rem
+      naam: rem_setpoint
+
+    # ID 0: de CV-vlag (bit 0 van de hoge byte van de masterstatus) eraf bij rem of ch_off.
+    - id: 0
+      richting: T>K
+      modus: vast
+      masker: true
+      wis: 0x01             # bits die gewist worden in de hoge byte
+      zet: 0x00             # bits die daarna gezet worden
+      conditie: rem_of_ch_off
+      naam: ch_vlag
+
+    # ID 25 (keteltemperatuur): de AVR vraagt ons; on_vraag beslist, bij geen antwoord doorgeven.
+    - id: 25
+      richting: K>T
+      modus: vraag
+      deadline: 100ms       # 0..600 ms; weglaten = deadline_antwoord
+      standaard: doorgeven  # of blokkeren
+      naam: ketel_temp
+      actief: true
+
+  # Een VRAAG komt hier binnen. Beschikbaar in lambdas: data_id, richting (0 T>K, 1 K>T),
+  # waarde (f8.8 als float) en frame (ruw, 32 bits). Acties: aurea_link2.doorgeven,
+  # aurea_link2.blokkeren, aurea_link2.vervangen (met waarde: of frame:).
+  on_vraag:
+    - data_id: 25
+      richting: K>T
+      then:
+        - if:
+            condition:
+              lambda: 'return waarde > 80.0f;'
+            then:
+              - aurea_link2.vervangen:
+                  waarde: 80.0     # keteltemperatuur begrensd op 80 graden
+            else:
+              - aurea_link2.doorgeven
+
+  avr_versie:
+    name: "AVR-versie"      # bijvoorbeeld "2.0.0 (2026-10-26) protocol 2"
+  avr_melding:
+    name: "AVR-melding"     # OK, of een melding bij een onverwachte of oudere versie
+
+# ── Sensoren, zoals in het oude component (template met lambda) ──
+sensor:
+  - platform: template
+    name: "Kamertemperatuur (OT)"
+    unit_of_measurement: "°C"
+    update_interval: 10s
+    lambda: 'return id(otlink)->get_room_temp();'
+  - platform: template
+    name: "Gevraagd setpoint (voor de rem)"
+    unit_of_measurement: "°C"
+    update_interval: 10s
+    lambda: 'return id(otlink)->get_requested_setpoint();'
+  - platform: template
+    name: "Ketel retour (ID 28)"
+    unit_of_measurement: "°C"
+    update_interval: 10s
+    lambda: 'return id(otlink)->get_ot(28);'
+  - platform: template
+    name: "AVR CRC-fouten"
+    update_interval: 30s
+    accuracy_decimals: 0
+    lambda: 'return id(otlink)->get_avr_crc_errors();'
+
+binary_sensor:
+  - platform: template
+    name: "AVR link"
+    lambda: 'return id(otlink)->get_link_ok();'
+  - platform: template
+    name: "Rem toegepast"
+    lambda: 'return id(otlink)->get_brake_active();'
+  - platform: template
+    name: "Ketel vlam"
+    lambda: 'return id(otlink)->get_flame();'
+
+# ── Sturing ──
+switch:
+  - platform: template
+    name: "Rem"
+    optimistic: true
+    turn_on_action:
+      - lambda: 'id(otlink)->set_brake(true);'
+    turn_off_action:
+      - lambda: 'id(otlink)->set_brake(false);'
