@@ -231,7 +231,17 @@ laat de CRC op 0 staan, dus de controle werkt met en zonder). Berekend per beric
   byte 3-4 = aanvoer, 5-6 = retour, 7-8 = buiten (bv. `ED 00` = 23.7 °C).
   Let op: ID2 wisselt af tussen twee payload-varianten; de temperatuur-bytes
   staan in beide op dezelfde plek, de staart erna verschilt (nog niet ontcijferd).
-- **ID3** — byte 9 = compressorsnelheid, byte 10 = vermogen (W = 25.6 × byte).
+- **ID3** — byte 3 = compressorfrequentie (Hz = byte × 2/3), byte 4 = werkelijke ventilator (×10 rpm),
+  byte 6 = expansieventiel (×2 pulsen), byte 8 = statusbits (bit 0 = ontdooien), byte 9 = stroom
+  (A = byte / 5), byte 10 = vermogen (W = 25.6 × byte). (Eerder stond hier byte 9 als compressorsnelheid: dat is de stroom.)
+- **ID1** — byte 3 = bedrijfsstatus (0x50 verwarmen, 0x40 stop voor of tijdens ontdooien, 0x00 uit), byte 4 = **ontdooien
+  actief** (0/1), byte 10 = ventilator-setpoint (×10 rpm).
+- **ID2, gegevenspagina** (byte 9 = 0): byte 11 = ontdooi-/spoeltemperatuur, byte 12 = zuigtemperatuur (beide raw/2 − 41),
+  byte 13 = persgastemperatuur (direct in °C), byte 14 = temperatuur waterzijde (raw/2 − 41).
+
+  Deze velden komen uit de byte-map van **WackoH** (Tweakers, en GitHub issue #1); wij hebben ze op beide units gecontroleerd
+  en als sensoren toegevoegd (groep Diagnose). Let op: ID3 byte 13, bij hem een pompindicator (24 uit, 152 aan), staat op onze
+  units constant op 24, ook als de unit draait.
   Het vermogen is geijkt tegen een Shelly PM: byte `0x1A` → 25.6 × 26 = 666 W
   tegenover 682 W gemeten (~2 % afwijking).
 - **ID1** — nog niet ontcijferd. Byte 4 leek defrost maar blijkt gewoon een

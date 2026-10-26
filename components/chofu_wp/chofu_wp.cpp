@@ -157,15 +157,34 @@ void ChofuWP::finish_frame_() {
       // die byte gewoon 0x01 wordt zodra de unit draait (en 0x00 als hij stil
       // staat) - het is een bedrijfsstatus, geen defrost. Tot we de echte
       // defrost-byte kennen niet meer als defrost publiceren.
+      // Naar de byte-map van WackoH (Tweakers, GitHub issue #1) is byte 4 wel degelijk "ontdooien actief" (0/1) en byte 3 de
+      // bedrijfsstatus (0x50 verwarmen, 0x40 stop voor of tijdens ontdooien, 0x00 uit); byte 10 is het ventilator-setpoint (x10 rpm).
+      run_status_ = frame_[3];
+      defrost_flag_ = frame_[4];
+      fan_set_rpm_ = frame_[10] * 10.0f;
       break;
     case 2:
       t_supply_ = (int16_t) ((frame_[4] << 8) | frame_[3]) / 10.0f;
       t_return_ = (int16_t) ((frame_[6] << 8) | frame_[5]) / 10.0f;
       t_outside_ = (int16_t) ((frame_[8] << 8) | frame_[7]) / 10.0f;
+      if (frame_[9] == 0) {  // gegevenspagina (01 = constante pagina), naar WackoH: T = raw/2 - 41
+        t_defrost_ = frame_[11] / 2.0f - 41.0f;
+        t_suction_ = frame_[12] / 2.0f - 41.0f;
+        t_discharge_ = (float) frame_[13];
+        t_water_ = frame_[14] / 2.0f - 41.0f;
+      }
       break;
     case 3:
       wp_speed_ = frame_[9];
       wp_power_w_ = 25.6f * frame_[10];
+      // Naar de byte-map van WackoH: byte 3 = compressorfrequentie (x 2/3 Hz), byte 4 = ventilator (x10 rpm),
+      // byte 6 = expansieventiel (x2 pulsen), byte 8 = statusbits (bit 0 ontdooien), byte 9 = stroom (/5 A).
+      freq_ = frame_[3] * 2.0f / 3.0f;
+      fan_rpm_ = frame_[4] * 10.0f;
+      eev_ = frame_[6] * 2.0f;
+      status8_ = frame_[8];
+      current_ = frame_[9] / 5.0f;
+      pump_byte_ = frame_[13];
       break;
     default:
       break;

@@ -43,7 +43,21 @@ class ChofuWP : public PollingComponent, public uart::UARTDevice {
   int get_stand() const { return stand_; }             // Wat WIJ commanderen
   int get_max_stand() const { return max_stand_; }
   float get_setpoint() const { return setpoint_; }      // Het vaste setpoint (modus auto)
-  int get_wp_speed() const { return wp_speed_; }        // Wat de WP rapporteert
+  int get_wp_speed() const { return wp_speed_; }        // Wat de WP rapporteert (ID3 byte 9, eigenlijk de stroom)
+  // Extra waarden uit de buitenunit, naar de byte-map van WackoH (Tweakers en GitHub issue #1). NAN of -1 tot het bericht binnen is.
+  float get_freq() const { return freq_; }               // compressorfrequentie in Hz (ID3 byte 3 x 2/3)
+  float get_current() const { return current_; }         // stroom in A (ID3 byte 9 / 5)
+  float get_fan_rpm() const { return fan_rpm_; }         // werkelijke ventilator (ID3 byte 4 x 10)
+  float get_fan_set_rpm() const { return fan_set_rpm_; } // ventilator-setpoint (ID1 byte 10 x 10)
+  float get_eev() const { return eev_; }                 // expansieventiel (ID3 byte 6 x 2 pulsen)
+  int get_pump_byte() const { return pump_byte_; }       // ID3 byte 13 (24 uit, 152 aan bij WackoH; op onze units constant 24)
+  int get_defrost_flag() const { return defrost_flag_; } // ID1 byte 4: 1 = ontdooien
+  int get_run_status() const { return run_status_; }     // ID1 byte 3: 0x50 verwarmen, 0x40 stop/ontdooien, 0 uit
+  int get_status8() const { return status8_; }           // ID3 byte 8: bit 0 = ontdooien, bit 6 = 60 min na de eerste start
+  float get_t_defrost() const { return t_defrost_; }     // ontdooi-/spoeltemperatuur (ID2 byte 11, raw/2 - 41)
+  float get_t_suction() const { return t_suction_; }     // zuigtemperatuur (ID2 byte 12, raw/2 - 41)
+  float get_t_discharge() const { return t_discharge_; } // persgastemperatuur (ID2 byte 13, direct in graden)
+  float get_t_water() const { return t_water_; }         // temperatuur waterzijde (ID2 byte 14, raw/2 - 41)
   float get_power() const { return wp_power_w_; }       // Echt vermogen (W)
   bool get_defrost() const { return defrost_; }
   bool get_running() const { return stand_ > 0; }
@@ -242,6 +256,9 @@ class ChofuWP : public PollingComponent, public uart::UARTDevice {
   // ── Data uit de warmtepomp ──
   float t_supply_{NAN}, t_return_{NAN}, t_outside_{NAN};
   uint8_t wp_speed_{0};
+  float freq_{NAN}, current_{NAN}, fan_rpm_{NAN}, fan_set_rpm_{NAN}, eev_{NAN};
+  float t_defrost_{NAN}, t_suction_{NAN}, t_discharge_{NAN}, t_water_{NAN};
+  int pump_byte_{-1}, defrost_flag_{-1}, run_status_{-1}, status8_{-1};
   float wp_power_w_{0};
   bool defrost_{false};
   uint32_t last_valid_rx_ms_{0};
