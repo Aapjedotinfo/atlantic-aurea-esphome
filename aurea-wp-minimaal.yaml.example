@@ -692,6 +692,129 @@ button:
 # ═══════════════════════════════════════════════════════════════
 
 sensor:
+  # ── Extra waarden uit de buitenunit (byte-map van WackoH, Tweakers en GitHub issue #1) ──
+  - platform: template
+    name: "Compressorfrequentie"
+    lambda: 'return id(wp)->get_freq();'
+    update_interval: 10s
+    unit_of_measurement: "Hz"
+    state_class: measurement
+    accuracy_decimals: 1
+    icon: mdi:sine-wave
+    web_server:
+      sorting_group_id: grp_diag
+      sorting_weight: 40
+
+  - platform: template
+    name: "Stroom buitenunit"
+    lambda: 'return id(wp)->get_current();'
+    update_interval: 10s
+    unit_of_measurement: "A"
+    state_class: measurement
+    accuracy_decimals: 1
+    icon: mdi:current-ac
+    web_server:
+      sorting_group_id: grp_diag
+      sorting_weight: 41
+
+  - platform: template
+    name: "Ventilatortoerental"
+    lambda: 'return id(wp)->get_fan_rpm();'
+    update_interval: 10s
+    unit_of_measurement: "rpm"
+    state_class: measurement
+    accuracy_decimals: 0
+    icon: mdi:fan
+    web_server:
+      sorting_group_id: grp_diag
+      sorting_weight: 42
+
+  - platform: template
+    name: "Ventilator-setpoint"
+    lambda: 'return id(wp)->get_fan_set_rpm();'
+    update_interval: 10s
+    unit_of_measurement: "rpm"
+    state_class: measurement
+    accuracy_decimals: 0
+    icon: mdi:fan-auto
+    web_server:
+      sorting_group_id: grp_diag
+      sorting_weight: 43
+
+  - platform: template
+    name: "Expansieventiel opening"
+    lambda: 'return id(wp)->get_eev();'
+    update_interval: 10s
+    unit_of_measurement: "pulsen"
+    state_class: measurement
+    accuracy_decimals: 0
+    icon: mdi:valve
+    web_server:
+      sorting_group_id: grp_diag
+      sorting_weight: 44
+
+  - platform: template
+    name: "Ontdooitemperatuur"
+    lambda: 'return id(wp)->get_t_defrost();'
+    update_interval: 10s
+    unit_of_measurement: "°C"
+    state_class: measurement
+    accuracy_decimals: 1
+    icon: mdi:snowflake-thermometer
+    web_server:
+      sorting_group_id: grp_diag
+      sorting_weight: 45
+
+  - platform: template
+    name: "Zuigtemperatuur"
+    lambda: 'return id(wp)->get_t_suction();'
+    update_interval: 10s
+    unit_of_measurement: "°C"
+    state_class: measurement
+    accuracy_decimals: 1
+    icon: mdi:thermometer-low
+    web_server:
+      sorting_group_id: grp_diag
+      sorting_weight: 46
+
+  - platform: template
+    name: "Persgastemperatuur"
+    lambda: 'return id(wp)->get_t_discharge();'
+    update_interval: 10s
+    unit_of_measurement: "°C"
+    state_class: measurement
+    accuracy_decimals: 0
+    icon: mdi:thermometer-high
+    web_server:
+      sorting_group_id: grp_diag
+      sorting_weight: 47
+
+  - platform: template
+    name: "Watertemperatuur waterzijde"
+    lambda: 'return id(wp)->get_t_water();'
+    update_interval: 10s
+    unit_of_measurement: "°C"
+    state_class: measurement
+    accuracy_decimals: 1
+    icon: mdi:coolant-temperature
+    web_server:
+      sorting_group_id: grp_diag
+      sorting_weight: 48
+
+  - platform: template
+    name: "Statusbyte buitenunit (ID3 byte 8)"
+    lambda: |-
+      const int v = id(wp)->get_status8();
+      if (v < 0) return {};
+      return (float) v;
+    update_interval: 10s
+    accuracy_decimals: 0
+    icon: mdi:numeric
+    entity_category: diagnostic
+    web_server:
+      sorting_group_id: grp_diag
+      sorting_weight: 60
+
   # ── Regeling ──
   - platform: template
     name: "Doel aanvoer"
@@ -815,6 +938,29 @@ sensor:
       sorting_weight: 11
 
 binary_sensor:
+  # ── Extra statussen uit de buitenunit (byte-map van WackoH) ──
+  - platform: template
+    name: "Ontdooien actief"
+    lambda: |-
+      const int v = id(wp)->get_defrost_flag();
+      if (v < 0) return {};
+      return v != 0;
+    icon: mdi:snowflake-melt
+    web_server:
+      sorting_group_id: grp_diag
+      sorting_weight: 50
+
+  - platform: template
+    name: "Ontdooien volgens ID3"
+    lambda: |-
+      const int v = id(wp)->get_status8();
+      if (v < 0) return {};
+      return (v & 0x01) != 0;
+    icon: mdi:snowflake-melt
+    web_server:
+      sorting_group_id: grp_diag
+      sorting_weight: 61
+
   - platform: template
     name: "Actief"
     lambda: 'return id(wp)->get_running();'
