@@ -561,8 +561,8 @@ dauwpunt gaan leidingen en radiatoren **condenseren** — met kans op waterschad
 Houd het setpoint hoog genoeg (vuistregel: boven ~17 °C) of isoleer je leidingen.
 
 **De dipswitches op de print.** Dip 2 zit op socket-pin 25 (PC2) en bepaalt het
-keteltype: **ON = OpenTherm-bedrijf.** Op OFF knijpt de logica de hele ketelkant
-af en komt er geen verkeer naar de ketel.
+keteltype: **ON = OpenTherm-bedrijf.** Op OFF is het een aan/uit-ketel: er komt geen
+OpenTherm-verkeer naar de ketel (de originele T1.1 speelt dan zelf slave).
 
 ## Credits
 

@@ -1,0 +1,33 @@
+start;einde;bytes;categorie;omschrijving
+0x0000;0x0001;2;vector;vector 0 RESET
+0x0002;0x0003;2;vector;vector 1 INT0
+0x0004;0x0005;2;vector-leeg;vector 2 INT1
+0x0006;0x0007;2;vector-leeg;vector 3 TIMER2_COMP
+0x0008;0x0009;2;vector-leeg;vector 4 TIMER2_OVF
+0x000a;0x000b;2;vector-leeg;vector 5 TIMER1_CAPT
+0x000c;0x000d;2;vector-leeg;vector 6 TIMER1_COMPA
+0x000e;0x000f;2;vector-leeg;vector 7 TIMER1_COMPB
+0x0010;0x0011;2;vector;vector 8 TIMER1_OVF
+0x0012;0x0013;2;vector-leeg;vector 9 TIMER0_OVF
+0x0014;0x0015;2;vector-leeg;vector 10 SPI_STC
+0x0016;0x0017;2;vector;vector 11 USART_RXC
+0x0018;0x0019;2;vector-leeg;vector 12 USART_UDRE
+0x001a;0x001b;2;vector-leeg;vector 13 USART_TXC
+0x001c;0x001d;2;vector-leeg;vector 14 ADC
+0x001e;0x001f;2;vector-leeg;vector 15 EE_RDY
+0x0020;0x0021;2;vector-leeg;vector 16 ANA_COMP
+0x0022;0x0023;2;vector-leeg;vector 17 TWI
+0x0024;0x0025;2;vector-leeg;vector 18 SPM_RDY
+0x0026;0x0029;4;vrij-0xFF;
+0x002a;0x0157;302;code-live;
+0x0158;0x0163;12;code-dood;
+0x0164;0x0ba9;2630;code-live;
+0x0baa;0x0bb3;10;data-tabel;weestelegram 1: 19 02 08 00 FF 00 9E C9 (10-bit-framing, 10 B)
+0x0bb4;0x0bbd;10;data-tabel;weestelegram 2: 19 03 08 00 00 00 37 67 (10 B)
+0x0bbe;0x0bcc;15;data-tabel;segment A: ID1 19 01 0C ... (15 B)
+0x0bcd;0x0bcd;1;data-tabel;opvulbyte 0x00 tussen segment A en C (nooit gelezen)
+0x0bce;0x0bd7;10;data-tabel;segment C: ID3 19 03 08 B2 02 00 C1 9A (10 B)
+0x0bd8;0x0be1;10;data-tabel;segment D: ID0 19 00 08 00 00 00 D9 B5 (10 B)
+0x0be2;0x0c4f;110;data-tabel;segment B: ID2-varianten, 11 x 10 B, index = stand/4
+0x0c50;0x1fff;5040;vrij-0xFF;
+0x2000;0x21ff;512;eeprom-leeg;512 B alle 0xFF

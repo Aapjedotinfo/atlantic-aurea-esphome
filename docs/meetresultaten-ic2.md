@@ -3,7 +3,7 @@
 Doorgemeten met de print op tafel en beide chips uit de voet. Alleen wat met de
 meter is vastgesteld. Afleidingen uit de firmware staan in
 [print-doormeten.md](print-doormeten.md) en in het
-[reverse-engineering-verslag](../../MCU's%20Atlantic/index.html).
+[reverse-engineering-verslag](../reverse-engineering/index.html).
 
 ATmega8 in DIP28, "Haddon T1.1".
 
@@ -35,7 +35,7 @@ ATmega8 in DIP28, "Haddon T1.1".
 | 22 | GND | | |
 | 23 | PC0 | | |
 | 24 | PC1 | | |
-| 25 | PC2 | dipswitch pin 2; dip pin 4 (het andere contact) naar massa | **ON = PC2 laag = normaal bedrijf. OFF = PC2 hoog = ketelkant afgeknepen.** Stond OFF tijdens de eerste tests |
+| 25 | PC2 | dipswitch pin 2; dip pin 4 (het andere contact) naar massa | **ON = PC2 laag = normaal bedrijf. OFF = PC2 hoog = aan/uit-ketel (geen OpenTherm naar de ketel; T1.1 speelt zelf slave, zie [reverse-engineering](../reverse-engineering/analyse-volledig/RAPPORT.md) 6.2).** Stond OFF tijdens de eerste tests |
 | 26 | PC3 | | |
 | 27 | PC4 | status-LED | |
 | 28 | PC5 | weerstand naar T4 | T4 stuurt K3 |
@@ -191,7 +191,7 @@ stand getest &mdash; onafhankelijk van alle andere firmware- en pincontroles.
 
 **Bevestigd:** dip pin 4 (tegenover pin 2) zit aan massa. Dus ON = PC2 dicht
 naar massa = laag = normaal bedrijf; OFF = open = PC2 hoog via de interne
-pull-up = ketelkant afgeknepen. Ondubbelzinnig, geen aanname meer.
+pull-up = aan/uit-ketel (geen OpenTherm naar de ketel). Ondubbelzinnig, geen aanname meer.
 
 **Actie: zet de dip op ON, controleer dat PC2 laag wordt, en herhaal de
 basistest** (komt er dan spanning op de thermostaatklem?) voordat verder

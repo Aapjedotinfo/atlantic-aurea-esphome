@@ -1,0 +1,1213 @@
+<meta charset="utf-8">
+<title>Haddon M1.1 &amp; T1.1 &mdash; Reverse-engineering verslag</title>
+<style>
+  :root{
+    --bg:#f1f0ea; --surface:#ffffff; --surface-2:#e9e7df;
+    --ink:#211f1a; --muted:#6e6c62; --border:rgba(33,31,26,.14);
+    --copper:#a85a26; --copper-ink:#7c4319;
+    --confirmed:#2f6b5e; --confirmed-bg:rgba(47,107,94,.1);
+    --open:#a34a2c; --open-bg:rgba(163,74,44,.1);
+    --info:#3d5a73; --info-bg:rgba(61,90,115,.1);
+    --code-bg:#eae8e0; --code-ink:#3a3833;
+    --shadow: 0 1px 2px rgba(33,31,26,.06);
+    --serif: Charter, "Iowan Old Style", "Georgia", "Times New Roman", serif;
+    --sans: -apple-system, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+    --mono: ui-monospace, "Cascadia Code", "SF Mono", Consolas, "Roboto Mono", monospace;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{
+      --bg:#15171b; --surface:#1c1f24; --surface-2:#20242a;
+      --ink:#e9e6de; --muted:#93938e; --border:rgba(233,230,222,.12);
+      --copper:#e08a46; --copper-ink:#f0a568;
+      --confirmed:#69b8a8; --confirmed-bg:rgba(105,184,168,.14);
+      --open:#e08a6e; --open-bg:rgba(224,138,110,.14);
+      --info:#7fa8c9; --info-bg:rgba(127,168,201,.14);
+      --code-bg:#20242a; --code-ink:#d8d4c8;
+      --shadow: 0 1px 2px rgba(0,0,0,.3);
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg:#15171b; --surface:#1c1f24; --surface-2:#20242a;
+    --ink:#e9e6de; --muted:#93938e; --border:rgba(233,230,222,.12);
+    --copper:#e08a46; --copper-ink:#f0a568;
+    --confirmed:#69b8a8; --confirmed-bg:rgba(105,184,168,.14);
+    --open:#e08a6e; --open-bg:rgba(224,138,110,.14);
+    --info:#7fa8c9; --info-bg:rgba(127,168,201,.14);
+    --code-bg:#20242a; --code-ink:#d8d4c8;
+    --shadow: 0 1px 2px rgba(0,0,0,.3);
+  }
+  :root[data-theme="light"]{
+    --bg:#f1f0ea; --surface:#ffffff; --surface-2:#e9e7df;
+    --ink:#211f1a; --muted:#6e6c62; --border:rgba(33,31,26,.14);
+    --copper:#a85a26; --copper-ink:#7c4319;
+    --confirmed:#2f6b5e; --confirmed-bg:rgba(47,107,94,.1);
+    --open:#a34a2c; --open-bg:rgba(163,74,44,.1);
+    --info:#3d5a73; --info-bg:rgba(61,90,115,.1);
+    --code-bg:#eae8e0; --code-ink:#3a3833;
+    --shadow: 0 1px 2px rgba(33,31,26,.06);
+  }
+
+  *{box-sizing:border-box;}
+  body{ background:var(--bg); color:var(--ink); font-family:var(--serif); font-size:16.5px; line-height:1.65; margin:0; }
+  ::selection{ background: var(--copper); color:#fff; }
+  a{ color: var(--copper-ink); text-decoration-thickness: 1px; text-underline-offset: 2px; }
+  a:focus-visible, summary:focus-visible{ outline: 2px solid var(--copper); outline-offset: 2px; }
+
+  .eyebrow{ font-family: var(--sans); font-size: .72rem; font-weight: 700; letter-spacing: .09em; text-transform: uppercase; color: var(--copper-ink); }
+  h1,h2,h3{ font-family: var(--sans); font-weight: 800; text-wrap: balance; color: var(--ink); }
+  h1{ font-size: clamp(1.7rem, 3vw, 2.3rem); letter-spacing: -.01em; margin: .1em 0 .2em; }
+  h2{ font-size: 1.35rem; margin: 2.6em 0 .9em; padding-top: .9em; border-top: 1px solid var(--border); letter-spacing: -.01em; }
+  h3{ font-size: 1.05rem; margin: 1.8em 0 .6em; color: var(--copper-ink); }
+  section:first-of-type h2:first-child{ margin-top: 0; padding-top:0; border-top:none; }
+  p{ margin: 0 0 1em; max-width: 68ch; }
+  ul, ol{ max-width: 68ch; padding-left: 1.3em; }
+  li{ margin-bottom: .35em; }
+  code{ font-family: var(--mono); font-size: .88em; background: var(--code-bg); color: var(--code-ink); padding: .1em .35em; border-radius: 3px; }
+
+  .shell{ display:grid; grid-template-columns: 250px minmax(0,1fr); max-width: 1180px; margin: 0 auto; }
+  @media (max-width: 920px){ .shell{ grid-template-columns: 1fr; } }
+  nav.toc{ position: sticky; top: 0; align-self: start; height: 100vh; overflow-y: auto; padding: 2.4rem 1.4rem 2rem 1.6rem; border-right: 1px solid var(--border); }
+  @media (max-width: 920px){ nav.toc{ position: static; height: auto; border-right:none; border-bottom: 1px solid var(--border); padding: 1.6rem 1.6rem 1.2rem; } }
+  nav.toc .chip{ font-family: var(--mono); font-size:.72rem; color: var(--muted); border:1px solid var(--border); border-radius:4px; padding:.25em .5em; display:inline-block; margin-bottom:1.2em; }
+  nav.toc ol{ list-style:none; padding:0; margin:0; font-family: var(--sans); font-size:.86rem; }
+  nav.toc li{ margin-bottom:.15em; }
+  nav.toc a{ display:block; padding:.4em .5em; border-radius:5px; color: var(--muted); text-decoration:none; }
+  nav.toc a:hover{ color:var(--ink); background:var(--surface-2); }
+  nav.toc .sub{ padding-left:1.1em; font-size:.94em; }
+
+  main{ padding: 2.6rem clamp(1.2rem,3vw,3.2rem) 6rem; min-width:0; }
+  .cover{ display:flex; flex-direction:column; gap:.9rem; padding-bottom:1.6rem; }
+  .datasheet{ font-family: var(--mono); font-size:.82rem; color:var(--muted); border:1px solid var(--border); border-radius:8px; background:var(--surface); box-shadow: var(--shadow); padding: .9rem 1.1rem; display:grid; grid-template-columns: repeat(auto-fit,minmax(150px,1fr)); gap:.7rem 1.4rem; margin-top:.6rem; }
+  .datasheet div b{ display:block; font-family:var(--sans); font-size:.68rem; letter-spacing:.06em; text-transform:uppercase; color:var(--muted); font-weight:700; margin-bottom:.2em; }
+  .datasheet div span{ color:var(--ink); }
+
+  .pill{ font-family: var(--sans); font-size:.68rem; font-weight:700; letter-spacing:.05em; text-transform:uppercase; padding:.22em .55em; border-radius:99px; white-space:nowrap; display:inline-flex; align-items:center; gap:.35em; }
+  .pill::before{ content:""; width:.45em; height:.45em; border-radius:50%; background:currentColor; }
+  .pill.confirmed{ background:var(--confirmed-bg); color:var(--confirmed); }
+  .pill.open{ background:var(--open-bg); color:var(--open); }
+  .pill.info{ background:var(--info-bg); color:var(--info); }
+  .chips{ display:flex; gap:.5rem; flex-wrap:wrap; }
+
+  .panel{ background:var(--surface); border:1px solid var(--border); border-radius:10px; padding: 1.1rem 1.3rem; margin: 1.3rem 0; box-shadow: var(--shadow); max-width: 78ch; }
+  .panel > *:last-child{ margin-bottom:0; }
+  .callout{ border-left: 3px solid var(--open); background: var(--open-bg); border-radius: 0 8px 8px 0; padding: .9rem 1.1rem; margin: 1.3rem 0; max-width: 70ch; }
+  .callout.good{ border-left-color: var(--confirmed); background: var(--confirmed-bg); }
+  .callout.neutral{ border-left-color: var(--info); background: var(--info-bg); }
+  .callout > *:last-child{ margin-bottom:0; }
+  .callout .eyebrow{ display:block; margin-bottom:.35em; }
+
+  .tablewrap{ overflow-x:auto; margin: 1.3rem 0; border:1px solid var(--border); border-radius:10px; background:var(--surface); box-shadow: var(--shadow); }
+  table{ border-collapse:collapse; width:100%; font-size:.86rem; min-width:520px; }
+  thead th{ font-family: var(--sans); font-size:.68rem; letter-spacing:.06em; text-transform:uppercase; color:var(--muted); text-align:left; padding:.7em .9em; border-bottom:1px solid var(--border); font-weight:700; }
+  tbody td{ padding:.55em .9em; border-bottom:1px solid var(--border); vertical-align:top; }
+  tbody tr:last-child td{ border-bottom:none; }
+  tbody tr:hover{ background: var(--surface-2); }
+  .num{ font-family:var(--mono); font-variant-numeric:tabular-nums; white-space:nowrap; }
+  p.muted{ color:var(--muted); font-size:.86rem; }
+
+  pre{ font-family: var(--mono); font-size:.78rem; line-height:1.55; background:var(--code-bg); color: var(--code-ink); border:1px solid var(--border); border-radius:8px; padding:1rem 1.1rem; overflow-x:auto; margin:1.2rem 0; }
+  .mermaid{ background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:1.2rem; margin:1.3rem 0; overflow-x:auto; }
+  .diagram{ background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:1rem; margin:1.3rem 0; overflow-x:auto; box-shadow:var(--shadow); }
+  .diagram svg{ display:block; width:100%; height:auto; min-width:620px; }
+  .dgbox rect{ fill:var(--surface); stroke:var(--border); stroke-width:1.4; }
+  .dgbox.ctrl rect{ stroke:var(--copper); stroke-width:1.8; }
+  .dgbox.src rect{ fill:var(--surface-2); }
+  .dgbox.esp rect{ stroke:var(--info); stroke-width:1.6; stroke-dasharray:5 4; }
+  .dgbox text{ font-family:var(--sans); fill:var(--ink); font-size:12px; font-weight:600; text-anchor:middle; }
+  .dgbox text.t{ font-size:12px; font-weight:700; }
+  .dgbox text.s{ font-size:9.5px; font-weight:400; fill:var(--muted); }
+
+  .filelist{ list-style:none; padding:0; display:grid; gap:.5rem; max-width:none; }
+  .filelist li{ font-family:var(--mono); font-size:.85rem; background:var(--surface); border:1px solid var(--border); border-radius:8px; padding:.6em .9em; display:flex; justify-content:space-between; align-items:baseline; gap:1em; flex-wrap:wrap; }
+  .filelist li:hover{ border-color: var(--copper); }
+  .filelist a{ font-weight:600; text-decoration:none; border-bottom:1px solid rgba(168,90,38,.35); }
+  .filelist a:hover{ border-bottom-color: var(--copper); }
+  .filelist .desc{ font-family:var(--sans); color:var(--muted); font-size:.82rem; }
+  #bestanden h3{ margin-top:1.6em; margin-bottom:.5em; }
+
+  footer{ max-width:70ch; margin-top:3rem; padding-top:1.4rem; border-top:1px solid var(--border); font-family:var(--sans); font-size:.82rem; color:var(--muted); }
+  .sr-only{ position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0,0,0,0); }
+</style>
+
+<div class="shell">
+  <nav class="toc" aria-label="Inhoudsopgave">
+    <span class="chip">rev-eng &middot; v4</span>
+    <ol>
+      <li><a href="#tldr">Kort samengevat</a></li>
+      <li><a href="#hardware">Op hardware bevestigd</a></li>
+      <li><a href="#print">De print doorgemeten</a>
+        <ol class="sub">
+          <li><a href="#print-socket">IC2-socket, alle 28 pinnen</a></li>
+          <li><a href="#print-onderdelen">Onderdelen</a></li>
+          <li><a href="#print-relais">De drie relais</a></li>
+          <li><a href="#print-analoog">De twee OT-interfaces</a></li>
+          <li><a href="#print-dip">De dipswitches</a></li>
+          <li><a href="#print-nabouw">Wat de nabouw leerde</a></li>
+        </ol>
+      </li>
+      <li><a href="#methode">Methode &amp; twee bugs</a></li>
+      <li><a href="#topologie">Topologie</a></li>
+      <li><a href="#m11">M1.1 (IC1)</a>
+        <ol class="sub">
+          <li><a href="#m11-arch">Architectuur</a></li>
+          <li><a href="#m11-pins">Pin-toewijzing</a></li>
+          <li><a href="#m11-temps">Temperatuur-parser</a></li>
+          <li><a href="#m11-lockout">De 5&deg;C-uitschakeling</a></li>
+          <li><a href="#m11-bediening">Knoppen &amp; schakelaar</a></li>
+        </ol>
+      </li>
+      <li><a href="#t11">T1.1 (IC2)</a>
+        <ol class="sub">
+          <li><a href="#t11-brug">De OpenTherm-brug</a></li>
+          <li><a href="#t11-pins">Pin-toewijzing</a></li>
+          <li><a href="#t11-doorgeef">Doorgeefluik</a></li>
+          <li><a href="#t11-bijstook">Bijstook-beslissing</a></li>
+        </ol>
+      </li>
+      <li><a href="#protocol">Protocol M1.1 &harr; T1.1</a></li>
+      <li><a href="#vergelijking">Vergelijking met chofu_wp</a></li>
+      <li><a href="#dekking">Dekkingscontrole</a></li>
+      <li><a href="#open">Open vragen</a></li>
+      <li><a href="#bestanden">Bestanden</a></li>
+    </ol>
+  </nav>
+
+  <main>
+    <div class="cover">
+      <span class="eyebrow">Reverse-engineering verslag &middot; versie 4 &middot; 6 augustus 2026</span>
+      <h1>Wat er in de Haddon M1.1 &amp; T1.1 zit</h1>
+      <p style="max-width:62ch">Twee ATmega8-dumps uit de Atlantic/Chofu-controlbox, uit elkaar gehaald met een
+      zelfgeschreven AVR-disassembler, en daarna nagelopen met de <strong>meter en een nabouw</strong>: de
+      print is pin voor pin doorgemeten en er draait inmiddels een eigen ATmega328P in de IC2-voet, met een
+      echte thermostaat en CV-ketel eraan. Waar het koper de firmware tegensprak, wint het koper &mdash; zie
+      <a href="#print">De print doorgemeten</a>.</p>
+      <div class="datasheet">
+        <div><b>Chip</b><span>2&times; ATmega8, DIP28, 8 MHz extern</span></div>
+        <div><b>M1.1 rol</b><span>IC1 &mdash; warmtepomp-link (verving je door ESP32)</span></div>
+        <div><b>T1.1 rol</b><span>IC2 &mdash; OpenTherm-brug Anna &harr; CV-ketel</span></div>
+        <div><b>Flash gebruikt</b><span>~3,2&ndash;3,3 KB van 8 KB (rest 0xFF)</span></div>
+      </div>
+      <div class="chips" style="margin-top:.4rem">
+        <span class="pill confirmed">Bevestigd uit de binary</span>
+        <span class="pill open">Onzeker / onopgelost</span>
+        <span class="pill info">Interpretatie</span>
+      </div>
+    </div>
+
+    <section id="correcties">
+      <h2>Correcties na de volledige analyse van 26-10-2026</h2>
+      <div class="callout">
+        <p>Een tweede, volledige ronde (alle 8192 flash-bytes per chip verklaard, round-trip met twee assemblers, eigen
+        cyclus-nauwkeurige emulator vergeleken met de gdb-AVR-simulator) corrigeerde enkele eerdere beweringen op deze
+        pagina. Details en bewijs: <code>analyse-volledig/RAPPORT.md</code>.</p>
+        <ul>
+          <li>De link M1.1&harr;T1.1 heeft <strong>geen 0xF0-kop</strong>; 12 bytes plus 8-bits som, 9615 baud 8N2.</li>
+          <li>De 5&deg;C-regel blokkeert een <strong>koude start</strong>; een draaiende pomp stopt pas als de credit-teller leeg is (ca. 2 uur).</li>
+          <li>De credit-teller <code>[0x65]</code> telt per <strong>60 seconden</strong>, niet per 15 ms.</li>
+          <li>DIP2 OFF = <strong>aan/uit-ketel</strong>, niet "ketelkant afgeknepen". Een "pompniveau" bestaat in de firmware niet.</li>
+          <li>M1.1 controleert van een ontvangen 0x91-bericht <strong>alleen het ID</strong>; kop, lengte en CRC niet. De firmware berekent nergens een CRC.</li>
+          <li>PB3 is een <strong>echo van de laatst ontvangen</strong> buitenunit-bytes, geen tweede zendlijn.</li>
+          <li>T1.1 <code>[0x73]</code> is de <strong>foutcode</strong> (M1.1 byte 10); de buitentemperatuur wordt in T1.1 weggegooid.</li>
+          <li>Een stand-wijziging midden in een ID2-telegram geeft een <strong>corrupt telegram</strong> (aangetoond in emulatie).</li>
+          <li>De twee weestelegrammen op 0x0baa en 0x0bb4 zijn <strong>bewezen onbereikbaar</strong>; <code>B2 02</code> is een vaste constante zonder afhankelijkheid.</li>
+          <li>Onopgelost: het einde van een 0x91-bericht (er is een stilte van ca. 36 ms nodig), klok/fuses, het doel van PB3 en de betekenis van de foutcodes.</li>
+        </ul>
+      </div>
+    </section>
+
+    <section id="tldr">
+      <h2>Kort samengevat</h2>
+      <p><strong>M1.1 (IC1)</strong> praat via een met Timer1 getimede bit-bang-UART op <strong>666 baud</strong>
+      met de buitenunit (PC3 = TX, PC4 = RX; DIP28-pin 26/27, exact wat <code>WIRING.md</code> zegt). Het
+      ontleedt de binnenkomende telegrammen: uit bericht-ID&nbsp;2 haalt het <strong>drie temperaturen</strong>
+      &mdash; aanvoer, retour en buitentemperatuur &mdash; die het door 10 deelt en als hele graden opslaat.</p>
+      <p><strong>T1.1 (IC2)</strong> is geen simpel bedieningspaneel maar een <strong>tweezijdige
+      OpenTherm-brug</strong>: slave richting de Anna-thermostaat, master richting de CV-ketel. Het laat
+      OpenTherm-frames tussen beide door en herschrijft onderweg specifieke Data-ID's. D&aacute;&aacute;r zit de
+      bijstook-beslissing.</p>
+      <div class="callout good">
+        <span class="eyebrow">Antwoord: is er een minimum-buitentemperatuur ingebouwd?</span>
+        <p><strong>Ja, een harde lockout bij 5&nbsp;&deg;C</strong> &mdash; precies de temperatuur waarbij het in de
+        praktijk misging. Op adres <code>0x069c</code> leest M1.1 de opgeslagen buitentemperatuur (SRAM
+        <code>0x73</code>) en vergelijkt die met <code>5</code>. Ligt de waarde daaronder (of is hij
+        negatief), dan wordt de gezondheids-teller hard op <strong>59</strong> gezet &mdash; &eacute;&eacute;n onder de drempel
+        van 60 die het vraagrelais uitschakelt. <em>Aangescherpt na de volledige analyse (26-10-2026):</em> dat geldt voor een
+        <strong>koude start</strong> (relais uit) en alleen als de credit-teller <code>[0x65]</code> &ge; 0xA0 is. Een
+        draaiende pomp stopt niet direct maar pas als die credit leeg is (ca. 2 uur). Het is ook niet de enige plek die de
+        teller onder 60 duwt (zie het rapport, 6.5). De code en de waarneming vallen wel samen.</p>
+      </div>
+      <div class="callout good">
+        <span class="eyebrow">En de telegrammen zijn nu volledig ontcijferd</span>
+        <p>De flash-tabellen die eerder onleesbaar bleven zijn gekraakt: vier telegrammen plus elf
+        per-stand-varianten, <strong>alle met CRC-16 = 0</strong>. Twee dingen komen daaruit die praktisch
+        van belang zijn: Atlantic moduleert in <strong>tien</strong> standen waar de ESP32 op zeven staat,
+        en de modusbyte is in de hele flash uitsluitend 0x00 of 0x01 &mdash; <strong>koelen heeft Atlantic
+        nooit gecommandeerd</strong>, terwijl de buitenunit het aantoonbaar w&eacute;l kan. Zie <a href="#tx-tabel">de telegramsectie</a>.</p>
+      </div>
+    </section>
+
+    <section id="hardware">
+      <h2>Op hardware bevestigd <span class="pill confirmed">gemeten</span></h2>
+      <p>Na dit verslag is de brug nagebouwd: een eigen <strong>ATmega328P in de IC2-socket</strong> en een
+      <strong>ESP32 in de IC1-socket</strong>, die via de 9600-baud-sporen op de print met elkaar praten.
+      Daarmee is een aantal conclusies hieronder niet langer afgeleid maar gemeten.</p>
+      <div class="tablewrap"><table>
+        <thead><tr><th>Conclusie</th><th>Hoe het bevestigd is</th></tr></thead>
+        <tbody>
+          <tr>
+            <td><strong>Beide chips draaien op 8&nbsp;MHz</strong></td>
+            <td>Uit de Timer1-herlaadwaarden: M1.1 laadt <code>0xF84F</code> (1969 cycli) voor een tik van
+            250&nbsp;&micro;s, T1.1 <code>0xFC3A</code> (966 cycli) voor 125&nbsp;&micro;s. Bij 8&nbsp;MHz komen
+            beide precies 33 &agrave; 34 cycli tekort &mdash; de ISR-overhead. Twee verschillende tijdbases,
+            hetzelfde tekort; bij 4 of 16&nbsp;MHz loopt het volledig uit de pas. Daarna op de print gevonden:
+            er ligt een <strong>8&nbsp;MHz-kristal onder de IC2-voet</strong>. En de nagebouwde firmware haalt
+            over vijf meetintervallen 1,9984&nbsp;s waar 2,000&nbsp;s bedoeld is &mdash; 0,08% afwijking,
+            oftewel kristalnauwkeurig.</td>
+          </tr>
+          <tr>
+            <td><strong>IC1 pin&nbsp;2/3 ligt gekruist met IC2 pin&nbsp;3/2</strong></td>
+            <td>Volgt al uit de firmware: beide chips zetten <code>UCSRB = 0x98</code> en maken PD1 uitgang,
+            dus PD0 is altijd RXD en PD1 altijd TXD &mdash; de verbinding m&oacute;&eacute;t gekruist zijn. In de
+            praktijk bevestigd: de ESP32 in IC1 praat met de AVR in IC2 <strong>zonder &eacute;&eacute;n extra
+            draad</strong>.</td>
+          </tr>
+          <tr>
+            <td><strong>Socket-pin&nbsp;13 draagt de OpenTherm van de thermostaat</strong></td>
+            <td>Een flankenteller op die pin, los van alle decodering, meet <strong>124 flanken per twee
+            seconden</strong> met een OpenTherm-thermostaat eraan. Een frame is 34 Manchester-bits, dus
+            34&ndash;68 flanken; twee frames per twee seconden komt daar precies op uit.</td>
+          </tr>
+          <tr>
+            <td><strong>De Manchester-codering uit <code>sub_0892</code></strong></td>
+            <td>Rust hoog, databit&nbsp;1 = eerste helft laag, toggle op tik&nbsp;4, nieuwe bit op tik&nbsp;8,
+            MSB eerst. Een nagebouwde ontvanger op precies die aannames decodeert de frames van een echte
+            thermostaat met <strong>kloppende pariteit</strong>.</td>
+          </tr>
+          <tr>
+            <td><strong>De comparator-leesrichting</strong></td>
+            <td><code>ACO</code> rechtstreeks lezen (rust&nbsp;=&nbsp;1) blijkt goed. Was de lijn omgekeerd,
+            dan zou het startbit als 0 lezen en zou er &uuml;berhaupt geen frame uitkomen.</td>
+          </tr>
+        </tbody>
+      </table></div>
+
+      <div class="callout good">
+        <span class="eyebrow">Pin&nbsp;13 is geen massa &mdash; het meningsverschil is beslecht</span>
+        <p>WackoH's pintabel noemt socket-pin&nbsp;13 <em>GND</em> en pin&nbsp;6 <em>NC</em>, waar dit verslag
+        uit de firmware twee volwaardige OpenTherm-kanalen afleidde. Die 124 flanken per twee seconden op
+        pin&nbsp;13 sluiten de discussie: daar zit de thermostaat.</p>
+        <p>Zijn waarneming is wel te verklaren. Een OT-ontvangst naar een comparator-ingang heeft vrijwel
+        altijd een weerstandsdeler met &eacute;&eacute;n poot aan massa, en met het oog volgen levert dan
+        "pin&nbsp;13 &rarr; GND" op. Zijn schema was naar eigen zeggen nog niet af.</p>
+      </div>
+
+      <div class="callout">
+        <span class="eyebrow">Een valkuil voor wie dit nabouwt: <code>0xFC3A</code> is met de hand afgeregeld</span>
+        <p>Die herlaadwaarde geeft 966 cycli, geen 1000. De ontbrekende ~34 cycli zijn de interruptlatentie
+        plus de <code>PUSH</code>'s v&oacute;&oacute;r het herladen in Atlantic's eigen ISR. De waarde klopt dus
+        alleen bij <em>die</em> ISR.</p>
+        <p>Neem je hem over in code met een langere interruptroutine, dan wordt je tik navenant trager en gaat
+        het subtiel mis: het startbit lees je nog net binnen zijn tweede helft, en het stopbit klopt per
+        ongeluk omdat je tegen die tijd de rustlijn leest &mdash; maar de 32 databits ertussen zijn rommel.
+        Je krijgt <strong>complete frames met een kapotte pariteit</strong>, wat gemakkelijk te lezen is als
+        een polariteits- of bedradingsprobleem. Zet Timer1 in <strong>CTC</strong> met
+        <code>OCR1A&nbsp;=&nbsp;999</code>, dan reset de teller in hardware en hangt de periode niet meer aan
+        de lengte van je ISR.</p>
+      </div>
+
+      <div class="callout good">
+        <span class="eyebrow">Opgelost: het relais op PB2 is de noodbrug</span>
+        <p>In <code>sub_0a24</code> staat <code>SBIS PINC,2</code> &rarr; <code>SBI PORTB,2</code>: PC2 laag zet
+        het relais aan. Direct daarna leest <code>SBIC PINB,2</code> het relais terug en zet bit&nbsp;6 van
+        <code>r25</code>. En <code>sub_0b7e</code> begint met <code>SBRS r25,6</code> en keert zonder dat bit
+        meteen terug &mdash; <strong>staat het relais af, dan zendt T1.1 helemaal niets naar IC1</strong>.</p>
+        <p>Dat pleitte al tegen een simpel warmtevraag-relais, maar w&aacute;t het schakelde stond nergens in de
+        firmware. Het doormeten geeft het antwoord: PB2 stuurt via T3 <strong>twee relais tegelijk aan,
+        K1&nbsp;&eacute;n K2</strong>, en die verleggen samen het complete aderpaar van de thermostaat
+        rechtstreeks naar de CV-ketel. Het is de <strong>noodbrug</strong>: valt de controlbox weg, dan praat
+        de thermostaat weer gewoon met de ketel en blijft het huis warm. Zie
+        <a href="#print-relais">De drie relais</a>.</p>
+      </div>
+    </section>
+
+    <section id="print">
+      <h2>De print doorgemeten <span class="pill confirmed">gemeten</span></h2>
+      <p>Alles hieronder is met de meter vastgesteld, met beide chips uit de voet en op doorbel/weerstand, zodat
+      geen halfgeleider de meting kon vervuilen. Waar een conclusie uit de firmware kwam en het koper die
+      bevestigt of tegenspreekt, staat dat erbij.</p>
+
+      <div class="callout good">
+        <span class="eyebrow">Drie conclusies uit de firmware moesten worden bijgesteld</span>
+        <ul>
+          <li><strong>PC5 is geen "tweede statusuitgang"</strong> maar de aansturing van een relais met een
+          wisselcontact van 10&nbsp;A &mdash; het droge contact voor een AAN/UIT-ketel.</li>
+          <li><strong>Het statuslampje op de voorkant hangt aan T1.1 PC4</strong>, niet aan M1.1 &mdash;
+          wat uit de firmware alleen de voor de hand liggende gok is, want M1.1 heeft ook een pin die
+          daarop lijkt. De LED in de CV-schakelaar op het front is w&eacute;&eacute;r iets anders: die hangt
+          aan K3.</li>
+          <li><strong>Alle vijf de "nergens beschreven" uitgangen eindigen blind</strong> op deze
+          printversie: pin 4, 14, 15, 17 en 18. Het spoor houdt gewoon op. Dat past bij een codebasis
+          die over meerdere modellen gedeeld wordt &mdash; de firmware stelt ze in, de print gebruikt ze
+          niet.</li>
+        </ul>
+      </div>
+
+      <h3 id="print-socket">IC2-socket, alle 28 pinnen</h3>
+      <div class="tablewrap"><table>
+        <thead><tr><th>Pin</th><th>AVR</th><th>Gemeten</th><th>Betekenis</th></tr></thead>
+        <tbody>
+          <tr><td class="num">1</td><td>RESET</td><td>R19 (5k) naar +5&nbsp;V</td><td>pull-up, verder niets</td></tr>
+          <tr><td class="num">2</td><td>PD0</td><td>naar de IC1-voet, kaal koper</td><td>interconnect RX</td></tr>
+          <tr><td class="num">3</td><td>PD1</td><td>naar de IC1-voet, kaal koper</td><td>interconnect TX</td></tr>
+          <tr><td class="num">4</td><td>PD2</td><td>&mdash;</td><td><strong>niet aangesloten</strong></td></tr>
+          <tr><td class="num">5</td><td>PD3</td><td>R13 (330&nbsp;&ohm;) naar OK5 pin&nbsp;3</td><td>zenden naar de ketel, LED-anode kanaal&nbsp;2, ~11&nbsp;mA</td></tr>
+          <tr><td class="num">6</td><td>PD4</td><td>R24 (4k7) naar de emitter van T1</td><td>zenden naar de thermostaat</td></tr>
+          <tr><td class="num">7</td><td>VCC</td><td>+5&nbsp;V</td><td></td></tr>
+          <tr><td class="num">8</td><td>GND</td><td>massa</td><td>ook C5 (100&nbsp;nF) hierheen</td></tr>
+          <tr><td class="num">9</td><td>XTAL1</td><td>kristal</td><td><strong>8&nbsp;MHz bevestigd</strong></td></tr>
+          <tr><td class="num">10</td><td>XTAL2</td><td>kristal</td><td>idem</td></tr>
+          <tr><td class="num">11</td><td>PD5</td><td>OK5 pin&nbsp;7 = emitter kanaal&nbsp;1</td><td>ontvangen van de ketel, zoals voorspeld</td></tr>
+          <tr><td class="num">12</td><td>PD6</td><td>&mdash;</td><td>niet aangesloten</td></tr>
+          <tr><td class="num">13</td><td>PD7 / AIN1</td><td>R3 (33k) omhoog, R4 (4k7) naar massa</td><td>ontvangen van de thermostaat, deler 33k/4k7</td></tr>
+          <tr><td class="num">14</td><td>PB0</td><td>&mdash;</td><td><strong>niet aangesloten</strong></td></tr>
+          <tr><td class="num">15</td><td>PB1</td><td>&mdash;</td><td><strong>niet aangesloten</strong></td></tr>
+          <tr><td class="num">16</td><td>PB2</td><td>diode &rarr; R26 (10k) &rarr; basis T3</td><td>T3 schakelt <strong>K1 en K2</strong> tegelijk: de noodbrug</td></tr>
+          <tr><td class="num">17</td><td>PB3</td><td>&mdash;</td><td><strong>niet aangesloten</strong></td></tr>
+          <tr><td class="num">18</td><td>PB4</td><td>&mdash;</td><td><strong>niet aangesloten</strong></td></tr>
+          <tr><td class="num">19</td><td>PB5</td><td>nog niet gemeten</td><td><span class="pill open">open</span></td></tr>
+          <tr><td class="num">20</td><td>AVCC</td><td>ook naar de basis van T1</td><td>T1 werkt dus in gemeenschappelijke basis</td></tr>
+          <tr><td class="num">21</td><td>AREF</td><td>+5&nbsp;V</td><td></td></tr>
+          <tr><td class="num">22</td><td>GND</td><td>massa</td><td></td></tr>
+          <tr><td class="num">23&ndash;24</td><td>PC0, PC1</td><td>nog niet gemeten</td><td><span class="pill open">open</span></td></tr>
+          <tr><td class="num">25</td><td>PC2</td><td>dipswitch&nbsp;2; het andere contact aan massa</td><td><strong>ON = laag = normaal bedrijf</strong>, OFF = hoog = ketelkant afgeknepen</td></tr>
+          <tr><td class="num">26</td><td>PC3</td><td>nog niet gemeten</td><td><span class="pill open">open</span></td></tr>
+          <tr><td class="num">27</td><td>PC4</td><td>naar een status-LED</td><td>het lampje op de voorkant</td></tr>
+          <tr><td class="num">28</td><td>PC5</td><td>weerstand naar de basis van T4</td><td>T4 stuurt <strong>K3</strong>, het aan/uit-ketelcontact</td></tr>
+        </tbody>
+      </table></div>
+      <p class="muted">Van de IC1-socket is tot nu toe alleen pin&nbsp;14 (PB0) doorgemeten: R21 (10k) naar de
+      status-LED.</p>
+
+      <h3 id="print-onderdelen">Onderdelen</h3>
+      <div class="tablewrap"><table>
+        <thead><tr><th>Ref</th><th>Type</th><th>Rol</th></tr></thead>
+        <tbody>
+          <tr><td class="num">OK1</td><td>H11D1</td><td>warmtepomp, ontvangen. Pin&nbsp;5 (collector) aan +5&nbsp;V</td></tr>
+          <tr><td class="num">OK2</td><td>H11D1</td><td>warmtepomp, zenden. Pin&nbsp;1 (LED-anode) aan +5&nbsp;V</td></tr>
+          <tr><td class="num">OK5</td><td>TLP521-2</td><td>de complete ketelkant. Kanaal&nbsp;1 = ontvangst (pin&nbsp;8 aan +5&nbsp;V), kanaal&nbsp;2 = zenden (pin&nbsp;3 van PD3)</td></tr>
+          <tr><td class="num">Q1&ndash;Q4</td><td>BC558A</td><td>PNP, hoogzijde</td></tr>
+          <tr><td class="num">T1&ndash;T4</td><td>BC547A</td><td>NPN, laagzijde. T2 is de warmtepomp-zendlijn vanaf IC1 pin&nbsp;26</td></tr>
+          <tr><td class="num">K1, K2</td><td>relais 24&nbsp;VDC</td><td>samen de noodbrug, beide van T3 af</td></tr>
+          <tr><td class="num">K3</td><td>Omron G2R-1, 12&nbsp;VDC</td><td>10&nbsp;A wisselcontact &mdash; vermogen, geen signaal</td></tr>
+          <tr><td class="num">LM7818</td><td>regelaar</td><td>de 18&nbsp;V-tak voor OpenTherm; voedt ook de LM7805</td></tr>
+          <tr><td class="num">LM7805</td><td>regelaar</td><td>5&nbsp;V-logica, ingang van de uitgang van de LM7818</td></tr>
+        </tbody>
+      </table></div>
+      <p>Dat de LM7805 gevoed wordt uit de LM7818 heeft een prettig gevolg: <strong>leeft de 5&nbsp;V, dan leeft
+      de 18&nbsp;V ook</strong>. Een dode OpenTherm-bus bij een werkende chip kan dus nooit een voedingsprobleem
+      in de 18&nbsp;V-tak zijn.</p>
+
+      <h3 id="print-relais">De drie relais &mdash; en waarom er maar &eacute;&eacute;n tegelijk mag</h3>
+      <pre><code>+18 V --+-- R27 (100 ohm) --+-- spoel K1 --+
+        |                    +-- spoel K2 --+-- collector T3 -- basis: PB2 (pin 16) via diode + R26 (10k)
+        |                    |
+        |                    +-- spoel K3 ----- collector T4 -- basis: PC5 (pin 28) via R
+        |                                       emitter T4 ---- frontschakelaar -- massa
+        |
+        +-- emitter Q1 / emitter Q4 -- de 18 V-bus naar de thermostaat</code></pre>
+      <p><strong>Alle drie de spoelen hangen achter dezelfde voorschakelweerstand R27 van 100&nbsp;&ohm;.</strong>
+      Dat is geen detail: trekken K1+K2 en K3 tegelijk aan, dan zakt de spoelspanning tot een niveau waarop
+      niets meer betrouwbaar schakelt. Atlantic heeft die combinatie ook nooit bedoeld &mdash; het is <em>&oacute;f</em>
+      een OpenTherm-ketel <em>&oacute;f</em> een aan/uit-ketel. Wie deze print nabouwt moet die vergrendeling zelf in
+      de firmware zetten.</p>
+      <div class="tablewrap"><table>
+        <thead><tr><th>Relais</th><th>Aangestuurd door</th><th>Functie</th></tr></thead>
+        <tbody>
+          <tr>
+            <td class="num">K1 + K2</td><td>PB2 &rarr; T3</td>
+            <td><strong>Noodbrug.</strong> Verlegt het complete aderpaar van de thermostaat rechtstreeks naar
+            de ketel. In het origineel volgt hij PC2; het gedrag "geen relais &rarr; geen rapportage aan IC1"
+            past daar precies bij: de controlbox staat dan buitenspel.</td>
+          </tr>
+          <tr>
+            <td class="num">K3</td><td>PC5 &rarr; T4, frontschakelaar in serie in de emitter</td>
+            <td><strong>Warmtevraag-contact voor een AAN/UIT-ketel.</strong> Tien ampere is volstrekt overbodig
+            voor een signaallijn. De firmware zet PC5 hoog vanaf een ketelsetpoint van 20&nbsp;&deg;C
+            (<code>0944 CPI 0x01</code> / <code>094c CPI 0x14</code>). De schakelaar op het front is de
+            vrijgave, en de LED in die schakelaar hangt aan hetzelfde pad.</td>
+          </tr>
+        </tbody>
+      </table></div>
+      <div class="callout">
+        <span class="eyebrow">Een valkuil bij het nabouwen</span>
+        <p>Het origineel klakkeloos volgen op PC5 betekent dat je je eigen brug overbrugt zodra er warmtevraag
+        komt &mdash; bij een OpenTherm-ketel is dat precies verkeerd. PC5 hoort instelbaar te zijn, met de
+        noodbrug als winnaar in de vergrendeling: die houdt het huis warm als de rest eruit ligt.</p>
+      </div>
+
+      <h3 id="print-analoog">De twee OT-interfaces zijn niet symmetrisch gebouwd</h3>
+      <p>Dit is de belangrijkste vondst voor iedereen die deze print aanstuurt. De firmware behandelt beide
+      kanten als spiegelbeeld, maar het koper doet dat niet.</p>
+      <div class="tablewrap"><table>
+        <thead><tr><th></th><th>Ketelkant (master)</th><th>Thermostaatkant (slave)</th></tr></thead>
+        <tbody>
+          <tr><td><b>Zenden</b></td>
+            <td>PD3 &rarr; R13 (330&nbsp;&ohm;) &rarr; OK5 kanaal&nbsp;2</td>
+            <td>PD4 &rarr; R24 (4k7) &rarr; emitter T1 (basis vast op AVCC) &rarr; basis Q4 &rarr; Q4 (PNP, emitter op +18&nbsp;V)</td></tr>
+          <tr><td><b>Ontvangen</b></td>
+            <td>PD5 digitaal, via OK5 kanaal&nbsp;1 met R18 (10k) als emitterweerstand</td>
+            <td>PD7 via de analoge comparator tegen de bandgap, deler R3&nbsp;33k / R4&nbsp;4k7</td></tr>
+          <tr><td><b>Rustniveau op de pin</b></td>
+            <td>laag</td><td>hoog</td></tr>
+          <tr><td><b>Hoe het origineel leest</b></td>
+            <td><code>SBIS PIND,5</code></td><td><code>SBIC ACSR,5</code></td></tr>
+        </tbody>
+      </table></div>
+      <p>De ketelkant is een keurige optocoupler-interface. De thermostaatkant is een <strong>discrete
+      hoogzijdedriver</strong>: T1 in gemeenschappelijke basis stuurt Q4 aan, die de 18&nbsp;V op de bus zet.
+      Bewust ontworpen, geen bijzaak &mdash; en met de <strong>omgekeerde zendpolariteit</strong> ten opzichte
+      van de ketelkant. PD4 moet <em>laag</em> om spanning op de thermostaatbus te zetten, PD3 moet <em>hoog</em>
+      om de opto-LED te laten branden.</p>
+      <p>Die twee tegengestelde leesinstructies in de originele firmware zijn dus geen slordigheid maar de
+      exacte weerslag van deze asymmetrie. Wie ze gelijktrekt "omdat het toch hetzelfde protocol is", krijgt
+      een kant die zwijgt.</p>
+
+      <h3 id="print-dip">De dipswitches</h3>
+      <div class="tablewrap"><table>
+        <thead><tr><th>Schakelaar</th><th>Aansluiting</th><th>Betekenis</th></tr></thead>
+        <tbody>
+          <tr><td class="num">dip&nbsp;1 (pin&nbsp;1/3)</td><td>pin&nbsp;1 op het NC-contact van K2</td>
+            <td>zit in het schakelpad van de noodbrug zelf, niet op een socket-pin. Vermoedelijk de tweede ader
+            van het paar dat de brug verlegt. <span class="pill open">deels open</span></td></tr>
+          <tr><td class="num">dip&nbsp;2 (pin&nbsp;2/4)</td><td>pin&nbsp;2 op PC2 (socket-pin&nbsp;25), pin&nbsp;4 aan massa</td>
+            <td><strong>Keteltype.</strong> ON = PC2 naar massa = laag = normaal OpenTherm-bedrijf.
+            OFF = open = PC2 hoog via de interne pull-up = <strong>aan/uit-ketel</strong>: geen OpenTherm naar de ketel,
+            T1.1 speelt zelf OpenTherm-slave en schakelt relais K3 (PC5) mee met het setpoint (&ge; 20&nbsp;&deg;C, alleen in
+            boiler-modus). Gecorrigeerd: eerder stond hier "de hele ketelkant afgeknepen".</td></tr>
+        </tbody>
+      </table></div>
+      <div class="callout">
+        <span class="eyebrow">Dit heeft dagen gekost</span>
+        <p>Tijdens de eerste tests met de nagebouwde firmware stonden <strong>beide dipswitches op OFF</strong>.
+        PC2 stond daardoor hoog, en in de originele logica knijpt dat de complete ketelkant af: geen zenden
+        (<code>0x0896</code>), geen doorgeven (<code>0x053e</code>), geen relais (<code>0x0a94</code>). Er werd
+        dus urenlang gezocht naar een firmware- of bedradingsfout terwijl de print zelf in de verkeerde stand
+        stond. Er zit geen knop op het front voor deze functie, dus niets wees erop.</p>
+      </div>
+
+      <h3 id="print-nabouw">Wat de nabouw leerde</h3>
+      <p>De brug draait inmiddels: een eigen ATmega328P in de IC2-voet, een ESP32 in de IC1-voet, met een echte
+      OpenTherm-thermostaat aan de ene kant en een CV-ketel aan de andere. Beide kanten decoderen frames
+      <strong>zonder pariteitsfouten</strong>. Vijf dingen die daarbij naar boven kwamen en die niet uit de
+      disassembly alleen af te leiden waren:</p>
+      <div class="tablewrap"><table>
+        <thead><tr><th>Vondst</th><th>Wat er misging, en waarom</th></tr></thead>
+        <tbody>
+          <tr>
+            <td><strong>De timerwaarde is niet overdraagbaar</strong></td>
+            <td><code>0xFC3A</code> is met de hand afgeregeld op Atlantic's eigen ISR. Een langere ISR maakt de
+            tik navenant trager, en het symptoom is verraderlijk: <em>complete frames met kapotte pariteit</em>,
+            wat leest als een bedradingsprobleem. CTC-modus met <code>OCR1A = 999</code> haalt de
+            afhankelijkheid weg.</td>
+          </tr>
+          <tr>
+            <td><strong>De decoder meet flankafstanden, geen vaste momenten</strong></td>
+            <td>Het origineel vergelijkt de tijd sinds de vorige flank met <code>0x06</code> en leidt daaruit af
+            of het een bit-midden of een bit-grens was. Sampelen op een vast punt in de bit lijkt equivalent
+            maar is het niet: het verliest de zelfsynchronisatie die Manchester juist zo robuust maakt.</td>
+          </tr>
+          <tr>
+            <td><strong>Nooit zwijgen tegen de master</strong></td>
+            <td>De thermostaat is de OpenTherm-master en verwacht op elke vraag antwoord. Antwoordt de brug niet
+            &mdash; bijvoorbeeld omdat de ketel zelf niet reageert &mdash; dan haakt de thermostaat na een paar
+            pogingen af. Het origineel doet dit goed: buffer <code>0x89</code> heeft een
+            <strong>Unknown-DataId-fallback</strong> voor precies dit geval.</td>
+          </tr>
+          <tr>
+            <td><strong>Nul is een gevaarlijk antwoord</strong></td>
+            <td>Weet je een waarde niet, antwoord dan <em>Data-Invalid</em> en niet 0. Een modulerende
+            thermostaat leest 0&nbsp;&deg;C ketelwater als ijskoud en vraagt vol vermogen.</td>
+          </tr>
+          <tr>
+            <td><strong>Een "dood" apparaat moet zichzelf kunnen herontdekken</strong></td>
+            <td>De brug merkt dat de ketel weg is doordat een antwoord uitblijft, en gaat dan zelf
+            antwoorden. Maar een antwoord komt alleen op een vraag, en die vraag werd in de
+            zelfstandige tak niet meer gesteld. Gevolg: viel de ketel &eacute;&eacute;n keer weg terwijl
+            er een thermostaat praatte, dan kwam hij nooit meer terug &mdash; ook niet als hij er allang
+            weer was. Elke "is X er nog"-vlag heeft een pad nodig dat hem w&eacute;&eacute;r aan kan
+            zetten, en dat pad mag niet achter de vlag zelf verstopt zitten.</td>
+          </tr>
+          <tr>
+            <td><strong>Geef alles door, ontleed het boven</strong></td>
+            <td>De eerste opzet stuurde een samenvatting naar de ESP32: acht waarden die de AVR zelf
+            uitpakte. Elk Data-ID dat je er later bij wilde kostte een nieuwe burn. Nu gaat elk frame
+            rauw door, in beide richtingen, en mag de ESP32 ook zelf frames laten versturen. Wat er
+            vervangen wordt blijft in de AVR &mdash; dat gebeurt midden in het doorgeven en een
+            heen-en-weer over de link haalt de OpenTherm-timing niet &mdash; maar w&aacute;t er
+            vervangen wordt komt van boven. De grens ligt niet bij "wat is handig" maar bij
+            <strong>wat moet blijven werken als de bovenliggende chip er niet is</strong>: timing,
+            doorgeven, nooit zwijgen, de noodbrug en de anti-pendeltijd. De rest is beleid.</td>
+          </tr>
+          <tr>
+            <td><strong>De poort-init is functioneel</strong></td>
+            <td>Het origineel zet <code>DDRB = 0x1F</code>, <code>PORTB = 0x00</code>,
+            <code>DDRC = 0x30</code>, <code>PORTC = 0xCF</code>, <code>DDRD = 0x1E</code>,
+            <code>PORTD = 0x19</code> &mdash; inclusief de pull-up op RXD en het actief laag houden van pinnen
+            die verder nergens beschreven worden. Alleen instellen wat je denkt nodig te hebben laat lijnen
+            zweven, en dat is van buitenaf onzichtbaar.</td>
+          </tr>
+        </tbody>
+      </table></div>
+    </section>
+
+    <section id="methode">
+      <h2>Methode &mdash; en twee bugs in het gereedschap</h2>
+      <p>Er was geen AVR-toolchain beschikbaar, dus is een eigen recursive-descent disassembler geschreven
+      (<code>avrdis.py</code>) die de controlflow volgt vanaf de reset- en interrupt-vectoren, zodat
+      datatabellen niet als instructies worden gelezen. Onderweg zijn twee fouten in d&aacute;t gereedschap
+      gevonden en hersteld &mdash; beide hadden gevolgen voor de analyse:</p>
+      <div class="callout">
+        <span class="eyebrow">Bug 1 &mdash; skip-instructies be&euml;indigden de trace</span>
+        <p>Een <code>SBRC</code>/<code>SBRS</code>/<code>SBIC</code>/<code>SBIS</code> gevolgd door
+        <code>RJMP</code> (het compiler-patroon voor <code>if (!vlag) return;</code>) werd als doodlopend
+        behandeld. Daardoor belandde bijna alle main-loop-logica in de "data"-bak. Na de fix ging M1.1 van
+        1052 naar 2024 zinvolle listingregels.</p>
+      </div>
+      <div class="callout">
+        <span class="eyebrow">Bug 2 &mdash; elke SBRS stond als SBRC in de listing</span>
+        <p><code>SBRC</code> en <code>SBRS</code> verschillen in <strong>bit 9</strong>
+        (<code>1111 110d&hellip;</code> vs <code>1111 111d&hellip;</code>); de decoder keek naar bit 3, dat bij allebei 0
+        is. Gevolg: <strong>17 instructies in M1.1 en 24 in T1.1</strong> hadden de omgekeerde betekenis.
+        Dat draaide onder meer de polariteit van de 666-baud-zendlijn om en verkeerde takken in de
+        hoofdlus. Alles hieronder is gebaseerd op de <em>gecorrigeerde</em> listings.</p>
+      </div>
+      <p>Waar een conclusie voor de hand ligt maar niet klopt, staat dat er expliciet bij. Een verslag dat
+      alleen het eindantwoord geeft, laat de volgende in dezelfde valkuil lopen.</p>
+    </section>
+
+    <section id="topologie">
+      <h2>Topologie</h2>
+      <div class="diagram" role="img" aria-label="Topologie: de Anna-thermostaat praat OpenTherm met T1.1 (T1.1 is slave); T1.1 praat OpenTherm met de CV-ketel (T1.1 is master); T1.1 praat 9600 baud met M1.1; M1.1 praat 666 baud met de buitenunit. De ESP32 met chofu_wp verving M1.1 en krijgt zijn setpoint van Home Assistant.">
+        <svg viewBox="0 0 860 300" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <marker id="ah" viewBox="0 0 8 8" markerWidth="7.5" markerHeight="7.5" refX="7" refY="4" orient="auto-start-reverse">
+              <path d="M0,0 L8,4 L0,8 Z" fill="var(--muted)"/>
+            </marker>
+            <marker id="ahd" viewBox="0 0 8 8" markerWidth="7.5" markerHeight="7.5" refX="7" refY="4" orient="auto-start-reverse">
+              <path d="M0,0 L8,4 L0,8 Z" fill="var(--info)"/>
+            </marker>
+          </defs>
+
+          <!-- solide verbindingen (hoofdketen) -->
+          <g fill="none" stroke="var(--muted)" stroke-width="1.6">
+            <line x1="136" y1="71" x2="246" y2="71" marker-start="url(#ah)" marker-end="url(#ah)"/>
+            <line x1="376" y1="71" x2="468" y2="71" marker-start="url(#ah)" marker-end="url(#ah)"/>
+            <line x1="598" y1="71" x2="690" y2="71" marker-start="url(#ah)" marker-end="url(#ah)"/>
+            <line x1="311" y1="100" x2="311" y2="212" marker-start="url(#ah)" marker-end="url(#ah)"/>
+          </g>
+          <!-- gestreepte verbindingen (ESP32-vervanging) -->
+          <g fill="none" stroke="var(--info)" stroke-width="1.6" stroke-dasharray="5 4">
+            <line x1="772" y1="212" x2="772" y2="100" marker-end="url(#ahd)"/>
+            <line x1="552" y1="240" x2="690" y2="240" marker-end="url(#ahd)"/>
+          </g>
+
+          <!-- edge-labels -->
+          <g font-family="var(--sans)" font-size="9.5" fill="var(--muted)" text-anchor="middle">
+            <text x="191" y="60">OpenTherm</text>
+            <text x="191" y="86">T1.1 = slave</text>
+            <text x="422" y="60">9600 baud UART</text>
+            <text x="422" y="86">12-byte, 8-bit som</text>
+            <text x="644" y="60">666 baud bit-bang</text>
+            <text x="644" y="86">0x19 / 0x91, CRC-16</text>
+          </g>
+          <g font-family="var(--sans)" font-size="9.5" fill="var(--muted)" text-anchor="start">
+            <text x="320" y="150">OpenTherm</text>
+            <text x="320" y="164">T1.1 = master</text>
+          </g>
+          <g font-family="var(--sans)" font-size="9.5" fill="var(--info)">
+            <text x="764" y="158" text-anchor="end">verving M1.1</text>
+            <text x="621" y="232" text-anchor="middle">setpoint</text>
+          </g>
+
+          <!-- boxen -->
+          <g class="dgbox">
+            <rect x="10"  y="44" width="126" height="54" rx="8"/>
+            <text x="73"  y="76">Anna thermostaat</text>
+          </g>
+          <g class="dgbox ctrl">
+            <rect x="248" y="44" width="128" height="54" rx="8"/>
+            <text x="312" y="68" class="t">T1.1 (IC2)</text>
+            <text x="312" y="85" class="s">OpenTherm-brug</text>
+          </g>
+          <g class="dgbox ctrl">
+            <rect x="468" y="44" width="130" height="54" rx="8"/>
+            <text x="533" y="68" class="t">M1.1 (IC1)</text>
+            <text x="533" y="85" class="s">PC3 TX / PC4 RX</text>
+          </g>
+          <g class="dgbox src">
+            <rect x="690" y="44" width="160" height="54" rx="8"/>
+            <text x="770" y="68" class="t">Buitenunit</text>
+            <text x="770" y="85" class="s">compressor</text>
+          </g>
+          <g class="dgbox src">
+            <rect x="248" y="212" width="128" height="54" rx="8"/>
+            <text x="312" y="244">CV-ketel</text>
+          </g>
+          <g class="dgbox">
+            <rect x="432" y="212" width="120" height="54" rx="8"/>
+            <text x="492" y="244">Home Assistant</text>
+          </g>
+          <g class="dgbox esp">
+            <rect x="690" y="212" width="160" height="54" rx="8"/>
+            <text x="770" y="236" class="t">ESP32</text>
+            <text x="770" y="253" class="s">chofu_wp.cpp</text>
+          </g>
+        </svg>
+      </div>
+      <p>Dit is het punt waar de meeste analyses de mist in gaan: T1.1 hangt <em>tussen</em> Anna en de
+      CV-ketel in, niet als eindpunt eraan. Alle warmtevraag loopt dus fysiek door T1.1 heen, en die kan
+      per OpenTherm-bericht besluiten of de vraag naar de ketel gaat of (via M1.1) naar de warmtepomp.</p>
+    </section>
+
+    <section id="m11">
+      <h2>M1.1 (IC1) &mdash; de warmtepomp-link</h2>
+
+      <h3 id="m11-arch">Architectuur <span class="pill confirmed">bevestigd</span></h3>
+      <p>Stack-init op <code>0x045F</code> (RAMEND van een ATmega8), BSS-clear bij boot, vijf init-routines,
+      dan een oneindige superloop van negen taken. Drie van de 19 interrupt-vectoren zijn actief:</p>
+      <div class="tablewrap"><table>
+        <thead><tr><th>Vector</th><th>Adres</th><th>Functie</th></tr></thead>
+        <tbody>
+          <tr><td>Timer1 overflow</td><td class="num">0x0a6c</td>
+            <td>Systeemtick. Reload <code>0xF84F</code> = 1969 cycli, plus ~29 cycli ISR-overhead v&oacute;&oacute;r de
+            reload &rarr; <strong>&asymp;250 &micro;s</strong>. Kruiscontrole: teller <code>0x61</code> telt tot 100 en
+            <code>0x62</code> tot 40 &rarr; samen 0,98 s, dus een 1-secondetik. Klopt.</td></tr>
+          <tr><td>USART RXC</td><td class="num">0x0b98</td><td>Leest &eacute;&eacute;n byte van T1.1, zet een vlag. Geen framing hier.</td></tr>
+          <tr><td>INT0</td><td class="num">0x0b66</td><td>Lege stub (push/pop). Vermoedelijk alleen wake-from-sleep.</td></tr>
+        </tbody>
+      </table></div>
+      <div class="callout good">
+        <span class="eyebrow">666 baud &mdash; nu hard onderbouwd</span>
+        <p>Je zou de verhouding van ongeveer 6&times; kunnen afdoen als oversampling en het daarbij laten.
+        De code is explicieter: de bit-teller <code>0x68</code> wordt op <strong>6</strong> geladen (op <code>0x0376</code>
+        en drie plekken in <code>sub_083a</code>) en per tick afgeteld. 6 &times; 250 &micro;s = 1500 &micro;s =
+        <strong>666,7 baud</strong>. Exact.</p>
+      </div>
+
+      <h3 id="m11-pins">Pin-toewijzing <span class="pill confirmed">bevestigd</span></h3>
+      <div class="tablewrap"><table>
+        <thead><tr><th>Pin</th><th>Richting</th><th>Functie</th></tr></thead>
+        <tbody>
+          <tr><td class="num">PC3 (pin 26)</td><td>uit</td><td><strong>TX naar buitenunit</strong>, 666 baud bit-bang. Na de bugfix blijkt de lijn <strong>niet-inverterend</strong>: <code>SBRS r20,7</code> &rarr; bit 1 = pin HOOG.</td></tr>
+          <tr><td class="num">PC4 (pin 27)</td><td>in</td><td><strong>RX van buitenunit</strong></td></tr>
+          <tr><td class="num">PC0</td><td>in</td><td><strong>CV-only-schakelaar</strong> &mdash; actief bij HOOG</td></tr>
+          <tr><td class="num">PC1</td><td>in</td><td><strong>Test-knop</strong> &mdash; actief bij LAAG (ingedrukt)</td></tr>
+          <tr><td class="num">PB0</td><td>uit</td><td><strong>vraagrelais</strong> &mdash; "roep de warmtepomp aan"</td></tr>
+          <tr><td class="num">PB1</td><td>uit</td><td><strong>statuslampje</strong> (aan zodra statuscode &ne; 0)</td></tr>
+          <tr><td class="num">PB3</td><td>uit</td><td>echo van de laatst <em>ontvangen</em> buitenunit-bytes op dezelfde bitklok als PC3 (niet dezelfde bits als PC3) <span class="pill open">doel onopgehelderd</span></td></tr>
+          <tr><td class="num">PB2 / PB4</td><td>uit</td><td>statussignalen rond het T1.1-telegram</td></tr>
+          <tr><td class="num">PD0 / PD1</td><td>in / uit</td><td>hardware-UART naar T1.1 (9600 baud)</td></tr>
+        </tbody>
+      </table></div>
+
+      <h3 id="m11-temps">De temperatuur-parser <span class="pill confirmed">bevestigd</span></h3>
+      <p>In <code>sub_0308</code> vanaf <code>0x03dc</code> controleert
+      M1.1 of het ontvangen bericht <strong>ID 2</strong> is (<code>CPI r18, 0x02</code>) en haalt er
+      vervolgens drie 16-bits waarden uit, elk gedeeld door 10 via een aftrek-lus:</p>
+      <div class="tablewrap"><table>
+        <thead><tr><th>SRAM</th><th>Bron in frame</th><th>Betekenis</th><th>Bijzonderheid</th></tr></thead>
+        <tbody>
+          <tr><td class="num">0x71</td><td class="num">0x7e&ndash;0x7f</td><td>aanvoertemperatuur</td><td>alleen positief</td></tr>
+          <tr><td class="num">0x72</td><td class="num">0x80&ndash;0x81</td><td>retourtemperatuur</td><td>alleen positief</td></tr>
+          <tr><td class="num">0x73</td><td class="num">0x82&ndash;0x83</td><td><strong>buitentemperatuur</strong></td><td><strong>heeft een aparte negatieve tak</strong> (<code>0x0460</code>&ndash;<code>0x0496</code>)</td></tr>
+        </tbody>
+      </table></div>
+      <p>Dat all&eacute;&eacute;n de derde waarde een tekenafhandeling heeft is het beslissende bewijs dat dit de
+      buitentemperatuur is &mdash; dat is de enige van de drie die onder nul komt. De ontvangbuffer begint op
+      <code>0x7b</code> met de <code>0x91</code>-header, dus <code>0x7c</code> = ID, <code>0x7d</code> =
+      lengte, daarna de payload: precies de indeling uit het bekende Chofu-protocol. Let op (volledige analyse): M1.1
+      gebruikt alleen het ID; kop, lengte en CRC van een ontvangen bericht worden <strong>niet gecontroleerd</strong>.</p>
+
+      <h3 id="m11-lockout">De 5&deg;C-uitschakeling <span class="pill confirmed">bevestigd</span></h3>
+      <p>SRAM <code>0x65</code> functioneert als een <em>gezondheids-aftelteller</em>. De Timer1-ISR telt hem
+      elke <strong>60 seconden</strong> met 1 omlaag (gecorrigeerd: eerder stond hier 60 ticks, ~15 ms); de regellogica laadt hem telkens terug op 180 zolang alles goed
+      gaat. Zakt hij onder <strong>60</strong>, dan schakelt <code>sub_062e</code> het vraagrelais uit
+      (<code>0x06d0</code>: <code>CPI r16,0x3c</code> &rarr; <code>CBI PORTB,0</code>).</p>
+      <p>De buitentemperatuur-check staat op <code>0x069c</code>:</p>
+      <pre>069c  LDI r30, 0x73        ; laad buitentemperatuur
+06a0  LD  r16, Z
+06a4  CPI r21, 0xc8        ; >= 200 ?  (= negatieve temperatuur)
+06a6  BRCC 0x06b0          ;   ja -> koud
+06a8  CPI r21, 0x05        ; <  5 ?
+06aa  BRCS 0x06b0          ;   ja -> koud
+06ac  ANDI r23, 0x7f       ; nee: "koud"-vlag wissen, klaar
+...
+06b0  ORI  r23, 0x80       ; "koud"-vlag zetten
+...
+06c2  LDI r16, 0x3c        ; 60
+06c4  DEC r16              ; -> 59
+06ca  ST  [0x65], r16      ; teller HARD onder de drempel</pre>
+      <div class="callout good">
+        <span class="eyebrow">Waarom dit de smoking gun is</span>
+        <p>Alle andere paden die <code>0x65</code> verlagen <strong>klemmen op precies 60</strong>
+        (<code>CPI r16,0x3c; BRCC &hellip;; LDI r16,0x3c</code> op <code>0x0714</code> en <code>0x0720</code>) en
+        kunnen het relais dus nooit uitschakelen. Alleen de koud-tak zet hem op <strong>59</strong>. Daarnaast
+        wordt de teller in <code>sub_04be</code> (<code>0x0518</code>) alleen tot 180 herladen zolang de
+        "koud"-vlag <em>niet</em> gezet is. Onder de drempel valt de warmtepomp dus uit &eacute;n blijft hij uit.</p>
+      </div>
+      <div class="callout neutral">
+        <span class="eyebrow">Komt overeen met de praktijk</span>
+        <p>De drempel in de code is 5, en dat is ook de buitentemperatuur waarbij de installatie in de
+        praktijk overstapte naar de CV-ketel. Code en waarneming bevestigen elkaar, dus er is geen
+        aanvullende verklaring nodig: dit is gewoon een door Atlantic ingebouwd bivalentiepunt, hard
+        vastgezet in de firmware en niet instelbaar.</p>
+        <p>De ESP32 kent deze grens niet en regelt puur op aanvoer versus setpoint &mdash; het draaibereik
+        onder 5&nbsp;&deg;C is dus feitelijk vrijgekomen door de vervanging van IC1.</p>
+      </div>
+
+      <h3 id="m11-bediening">Knoppen en schakelaar <span class="pill confirmed">bevestigd</span></h3>
+      <ul>
+        <li><strong>PC0 &mdash; CV-only-schakelaar</strong> (<code>sub_02ae</code>, <code>SBIS</code> &rarr; actie bij
+        HOOG): zet het vraagrelais uit en reset de tellers. Met de pull-up op PORTC betekent dit dat de
+        <em>open</em> stand "alleen CV" is; sluiten geeft de warmtepomp vrij. Dat is een verstandige
+        fail-safe: valt de bedrading weg, dan stookt de ketel door.</li>
+        <li><strong>PC1 &mdash; Test-knop</strong> (<code>sub_02d2</code>, <code>SBIC</code> &rarr; actie bij LAAG):
+        zet het vraagrelais weer aan en herlaadt alle tellers, mits de laatst gerapporteerde snelheid &ge; 20
+        was en er geen communicatiestoring geregistreerd staat. Dit is precies de handmatige tegenhanger
+        van de automatische uitschakeling hierboven &mdash; wat verklaart waarom deze knop werkte om de unit
+        terug te dwingen naar warmtepompbedrijf.</li>
+        <li><strong>Reset-knop</strong>: komt nergens in de code voor, dus vrijwel zeker direct op de
+        AVR-RESET-pin bedraad.</li>
+        <li><strong>Let op waar het voorpaneel-lampje zit.</strong> Beide chips hebben een storingsuitgang,
+        en dat is verwarrend. M1.1's PB1 (socket-pin 15) is een simpele aan/uit die "foutcode is niet nul"
+        volgt (<code>0x04b6</code>). Maar het lampje op de voorkant is de <strong>knippercode van T1.1 op
+        PC4</strong>, socket-pin 27 &mdash; in de praktijk bevestigd: dat lampje stopte met werken zodra de
+        originele T1.1 uit de socket ging, terwijl de ESP32 in IC1 gewoon doordraaide.
+        <span class="pill confirmed">gemeten</span></li>
+      </ul>
+    </section>
+
+    <section id="t11">
+      <h2>T1.1 (IC2) &mdash; de OpenTherm-brug</h2>
+      <div class="callout">
+        <span class="eyebrow">Drie voor de hand liggende conclusies die niet kloppen</span>
+        <p>T1.1 is g&eacute;&eacute;n bedieningspaneel dat de ketel naar Anna emuleert. De analoge comparator
+        wordt niet uitgezet maar juist gebruikt. En <code>sub_0870</code> ziet eruit als een BCD-conversie,
+        maar is het niet. Alle drie liggen ze voor de hand bij een eerste lezing; alle drie zijn ze fout.</p>
+      </div>
+
+      <h3 id="t11-brug">Waarom het een brug is, geen eindpunt <span class="pill confirmed">bevestigd</span></h3>
+      <ul>
+        <li><strong>Twee ontvangstkanalen:</strong> de analoge comparator (<code>SBIC/SBIS ACSR,5</code> =
+        ACO, in <code>sub_0286</code>) en PD5 (<code>sub_0398</code>). <code>ACSR = 0x40</code> zet
+        <em>bit 6 (ACBG)</em> &mdash; de bandgap-referentie &mdash; en laat ACD op 0, dus de comparator staat juist
+        <strong>aan</strong>. Dat is de klassieke OpenTherm-ontvangstschakeling.</li>
+        <li><strong>Twee zendkanalen:</strong> PD3 (<code>sub_0892</code>) en PD4 (<code>sub_0958</code>).</li>
+        <li><strong>Beide richtingen worden gekopieerd:</strong> <code>0x0490</code> kopieert buffer
+        <code>0x89</code> &rarr; <code>0x8d</code>, en <code>0x053e</code> kopieert <code>0x8d</code> &rarr;
+        <code>0x89</code>.</li>
+        <li><strong>De berichttypes verraden de rollen.</strong> In OpenTherm zit het type in bits 6&ndash;4 van
+        de eerste byte:</li>
+      </ul>
+      <div class="tablewrap"><table>
+        <thead><tr><th>Opgebouwde byte</th><th>Type</th><th>Betekenis</th><th>Rol</th></tr></thead>
+        <tbody>
+          <tr><td class="num">0x40 / 0xC0</td><td class="num">100</td><td>Read-Ack</td><td>antwoord van een <strong>slave</strong> &rarr; richting Anna</td></tr>
+          <tr><td class="num">0x10 / 0x90</td><td class="num">001</td><td>Write-Data</td><td>opdracht van een <strong>master</strong> &rarr; richting ketel</td></tr>
+          <tr><td class="num">0x80</td><td class="num">000</td><td>Read-Data</td><td>vraag van een <strong>master</strong> &rarr; richting ketel</td></tr>
+          <tr><td class="num">0x70</td><td class="num">111</td><td>Unknown-DataId</td><td>standaardantwoord voor niet-herkende ID's</td></tr>
+        </tbody>
+      </table></div>
+      <p>Die laatste is doorslaggevend: een <code>Unknown-DataId</code> als default-tak (<code>0x0850</code>)
+      is leerboek-slavegedrag en komt in geen enkele andere toepassing voor.</p>
+
+      <h3 id="t11-doorgeef">Een doorgeefluik met vijf uitzonderingen <span class="pill confirmed">bevestigd</span></h3>
+      <p>T1.1 implementeert de OpenTherm-specificatie <strong>niet</strong>. Beide richtingen hebben
+      dezelfde opbouw: kopieer byte 0 en 1 (berichttype + Data-ID) van bron- naar doelbuffer, vertak op de
+      Data-ID, en <strong>val voor al het overige door naar een generiek pad dat byte 2 en 3 ook gewoon
+      overneemt</strong> &mdash; een compleet ongewijzigd frame. Die paden staan op <code>0x0532</code>
+      (richting ketel) en <code>0x066a</code> (richting Anna) en doen letterlijk niets anders dan twee bytes
+      doorschuiven.</p>
+      <div class="tablewrap"><table>
+        <thead><tr><th>Richting</th><th>Onderschepte Data-ID's</th><th>Rest</th></tr></thead>
+        <tbody>
+          <tr><td>Anna &rarr; ketel</td><td class="num">0, 1, 16</td><td>ongewijzigd door</td></tr>
+          <tr><td>Ketel &rarr; Anna</td><td class="num">0, 1, 16, <strong>25</strong>, <strong>28</strong></td><td>ongewijzigd door</td></tr>
+        </tbody>
+      </table></div>
+      <div class="callout good">
+        <span class="eyebrow">Anna krijgt de temperaturen van de w&aacute;rmtepomp</span>
+        <p>Bij ID&nbsp;25 (Boiler Water Temperature) en ID&nbsp;28 (Return Water Temperature) vervangt T1.1
+        de meetwaarde van de ketel door een waarde die via de 9600-baud-link van M1.1 binnenkwam: de
+        <strong>aanvoer</strong>- respectievelijk <strong>retourtemperatuur van de warmtepomp</strong>.</p>
+        <p>Anna denkt dus dat ze met &eacute;&eacute;n ketel praat, en ziet de temperaturen die het systeem
+        werkelijk produceert &mdash; ook wanneer de gasketel koud staat en de warmtepomp al het werk doet.
+        Zonder die substitutie zou Anna een koude ketel zien terwijl het huis warm wordt, en zou haar eigen
+        modulatielogica op hol slaan. Dit is het scharnierpunt van de hele hybride opzet.</p>
+        <p><strong>Herleiding.</strong> T1.1 leest het telegram van M1.1 vanaf index 6: index 7 (aanvoer)
+        gaat naar SRAM <code>0x71</code>, index 8 (retour) naar <code>0x72</code>, en die twee worden bij
+        <code>0x05c6</code> en <code>0x05f6</code> in de OT-antwoorden geschoven. Let op de wegwerp-<code>LD</code>
+        op <code>0x0212</code>: index 9 (buitentemperatuur) wordt gelezen en meteen overschreven door index 10
+        (statuscode) &mdash; daardoor lijkt de veldindeling &eacute;&eacute;n positie verschoven als je er
+        snel overheen leest.</p>
+      </div>
+      <p>Voor wie T1.1 wil nabouwen is dit de belangrijkste vondst van het hele onderzoek: er is geen
+      OpenTherm-stack nodig, alleen een transparante brug plus vijf onderscheppingspunten. Alles wat je niet
+      kent geef je door, en dat is meteen ook het veiligste gedrag.</p>
+
+      <h3>De herkende Data-ID's</h3>
+      <div class="tablewrap"><table>
+        <thead><tr><th>ID</th><th>Standaardbetekenis</th></tr></thead>
+        <tbody>
+          <tr><td class="num">0</td><td>Status</td></tr>
+          <tr><td class="num">1</td><td>Control Setpoint (CV-aanvoertemperatuur)</td></tr>
+          <tr><td class="num">2 / 3</td><td>Master- / Slave-configuratie</td></tr>
+          <tr><td class="num">7</td><td>Cooling Control Signal</td></tr>
+          <tr><td class="num">14</td><td>Max. relatief modulatieniveau</td></tr>
+          <tr><td class="num">16</td><td>Room Setpoint</td></tr>
+          <tr><td class="num">17</td><td>Relatief modulatieniveau</td></tr>
+          <tr><td class="num">24</td><td>Room Temperature</td></tr>
+          <tr><td class="num">25</td><td>Boiler Water Temperature</td></tr>
+          <tr><td class="num">28</td><td>Return Water Temperature</td></tr>
+          <tr><td class="num">49</td><td>fabrikant-specifiek bereik</td></tr>
+        </tbody>
+      </table></div>
+
+      <h3>Pariteit en Manchester <span class="pill confirmed">bevestigd</span></h3>
+      <p><code>sub_0870</code>/<code>sub_0872</code> is <strong>geen</strong> BCD-conversie maar de
+      OpenTherm-pariteitsberekening: negen keer roteren door carry, en bij elke gezette bit
+      <code>SWAP r18</code> (togglet 0x08 &harr; 0x80), waarna <code>ANDI r18,0x80</code> + <code>ADD r16,r18</code>
+      het pariteitsbit in bit 7 schuift. Bewijs: dit zijn exact de twee <code>ROL</code>-instructies die T1.1
+      bezit. Dat <code>sub_0872</code> ook los wordt aangeroepen &mdash; zonder de <code>r18</code>-init &mdash; laat zien
+      dat de pariteit over het hele 4-byte frame wordt doorgeteld.</p>
+      <p>De fysieke laag is Manchester: in <code>sub_0892</code> wacht de code tot de tick-teller op
+      <strong>4</strong> staat (de helft van 8) en <em>inverteert</em> dan de pin op basis van de
+      teruggelezen stand (<code>SBIC PIND,3</code>). Timing: reload <code>0xFC3A</code> = 966 cycli plus
+      overhead &asymp; 124 &micro;s; 8 ticks per bit &asymp; <strong>1,00 ms = 1000 bit/s</strong>, precies de
+      OpenTherm-bitrate.</p>
+
+      <h3 id="t11-pins">Pin-toewijzing T1.1 <span class="pill confirmed">bevestigd</span></h3>
+      <div class="tablewrap"><table>
+        <thead><tr><th>Pin</th><th>Richting</th><th>Functie</th></tr></thead>
+        <tbody>
+          <tr><td class="num">PD0 / PD1</td><td>in / uit</td><td>hardware-UART naar M1.1 (9600 baud)</td></tr>
+          <tr><td class="num">PD3</td><td>uit</td><td>OpenTherm zenden <strong>naar de CV-ketel</strong> (T1.1 als master), Manchester &mdash; buffer <code>0x8d</code></td></tr>
+          <tr><td class="num">PD4</td><td>uit</td><td>OpenTherm zenden <strong>naar Anna</strong> (T1.1 als slave), Manchester &mdash; buffer <code>0x89</code></td></tr>
+          <tr><td class="num">AIN1 = PD7<br>socket-pin 13</td><td>in</td><td>OpenTherm ontvangen <strong>van de thermostaat</strong>, via ACO + bandgap &mdash; buffer <code>0x89</code> <span class="pill confirmed">gemeten</span></td></tr>
+          <tr><td class="num">PD5</td><td>in</td><td>OpenTherm ontvangen <strong>van de CV-ketel</strong> &mdash; buffer <code>0x8d</code></td></tr>
+          <tr><td class="num">PC2</td><td>in</td><td>knop/modusingang; stuurt ook PB2 aan en kiest tussen de twee brugrichtingen (<code>0x053e</code>)</td></tr>
+          <tr><td class="num">PC4<br>socket-pin 27</td><td>uit</td><td><strong>het statuslampje op de voorkant</strong> &mdash; knippercode. <code>PORTC = 0xCF</code> bij de init zet hem laag, en <code>0x0b6c</code> ook zodra de foutcode nul is, dus laag = uit <span class="pill confirmed">gemeten</span></td></tr>
+          <tr><td class="num">PC5<br>socket-pin 28</td><td>uit</td><td>stuurt via T4 <strong>relais K3</strong> aan: het droge 10&nbsp;A-contact voor een AAN/UIT-ketel, met de frontschakelaar in serie. Hoog vanaf een ketelsetpoint van 20&nbsp;&deg;C. Uit de firmware alleen lijkt dit een statusuitgang <span class="pill confirmed">gemeten</span></td></tr>
+          <tr><td class="num">PB2<br>socket-pin 16</td><td>uit</td><td>stuurt via T3 <strong>K1 en K2 tegelijk</strong> aan &mdash; de <strong>noodbrug</strong> die het aderpaar van de thermostaat rechtstreeks naar de ketel verlegt. Volgt PC2, en zonder dit relais zendt T1.1 niets naar IC1 <span class="pill confirmed">gemeten</span></td></tr>
+          <tr><td class="num">PD2, PB0, PB1,<br>PB3, PB4</td><td>uit</td><td>alle vijf als uitgang geconfigureerd, nergens beschreven, en op deze print <strong>niet aangesloten</strong> &mdash; het spoor eindigt blind <span class="pill confirmed">gemeten</span></td></tr>
+        </tbody>
+      </table></div>
+      <div class="callout good">
+        <span class="eyebrow">Welke lijn naar wie gaat &mdash; opgelost zonder doormeten</span>
+        <p>Dit viel te herleiden uit de bufferadressen, want elke zijde heeft zijn eigen 4-byte frame-buffer
+        en de code verraadt welke rol daarbij hoort:</p>
+        <ul>
+          <li>In buffer <code>0x89</code> worden <strong>Read-Ack</strong>-antwoorden opgebouwd
+          (<code>0x40</code>/<code>0xC0</code> op <code>0x0628</code>, <code>0x068c</code>,
+          <code>0x06a8</code>, <code>0x06be</code>) plus de <strong>Unknown-DataId</strong>-fallback. Dat is
+          slavegedrag. Die buffer wordt gezonden door <code>sub_0958</code> op <strong>PD4</strong>, en
+          gevuld door de comparator-ontvanger. &rarr; <strong>PD4 en de comparator vormen de Anna-kant.</strong></li>
+          <li>In buffer <code>0x8d</code> worden <strong>Read-Data</strong> en <strong>Write-Data</strong>
+          opgebouwd (<code>0x80</code>, <code>0x10</code>, <code>0x90</code> op <code>0x04be</code>,
+          <code>0x04e6</code>, <code>0x051a</code>). Dat is mastergedrag. Die buffer gaat via
+          <code>sub_0892</code> naar <strong>PD3</strong> en wordt gevuld door de PD5-ontvanger.
+          &rarr; <strong>PD3 en PD5 vormen de ketel-kant.</strong></li>
+        </ul>
+        <p>De brug is dus keurig symmetrisch: <code>0x0490</code> kopieert <code>0x89 &rarr; 0x8d</code>
+        (Anna naar ketel) en <code>0x053e</code> kopieert <code>0x8d &rarr; 0x89</code> (ketel naar Anna),
+        met de ID-specifieke herschrijvingen ertussen.</p>
+      </div>
+
+      <h3 id="t11-bijstook">Waar de bijstook-beslissing valt <span class="pill info">interpretatie</span></h3>
+      <p>Zoek je naar een CV-ketelrelais, dan vind je het niet &mdash; en dan is de verleiding groot om te
+      concluderen dat bijstook buiten de firmware om geregeld wordt. Dat klopt niet: <strong>de ketel wordt
+      niet via een relais aangestuurd maar via OpenTherm, door T1.1 zelf.</strong> De relevante logica staat vanaf <code>0x0676</code>:</p>
+      <ul>
+        <li>De van Anna ontvangen Control Setpoint wordt bewaard in <code>0x6e</code>/<code>0x6f</code>.</li>
+        <li>Op <code>0x0688</code> wordt die vergeleken met <code>0x14</code> (= 20).</li>
+        <li>Onder de drempel antwoordt T1.1 met statusdata <code>0x00</code> (idle); erboven met
+        <code>0x02</code> (CH-modus actief) of <code>0x0a</code> (CH-modus + vlam).</li>
+        <li>Op <code>0x04be</code> schrijft T1.1 een <em>Write-Data ID1</em> met waarde <code>0x0a00</code>
+        &mdash; een Control Setpoint van <strong>10,0 &deg;C</strong> richting de ketel, feitelijk "blijf uit".</li>
+      </ul>
+      <p>Dat is dus het omschakelpunt: T1.1 bepaalt met een drempel op de warmtevraag of de ketel een re&euml;le
+      aanvoertemperatuur krijgt of op een pro-forma 10 &deg;C wordt gezet. De precieze koppeling met M1.1's
+      vraagrelais heb ik niet volledig uitgewerkt.</p>
+    </section>
+
+    <section id="protocol">
+      <h2>Protocol M1.1 &harr; T1.1 <span class="pill confirmed">bevestigd</span></h2>
+      <p>Hardware-UART, <code>UBRRL = 0x67</code> met <code>U2X = 1</code> &rarr; 8.000.000 / (8 &times; 104) &asymp;
+      <strong>9615 baud</strong>. <code>UCSRC = 0x8E</code> geeft 8 databits, geen pariteit en
+      <strong>twee stopbits</strong> &mdash; eerdere versies van dit verslag zeiden 8N1. Voor een ontvanger
+      maakt dat niets uit, die kijkt alleen naar de eerste stopbit. Beide kanten sturen een
+      <strong>12-byte telegram</strong>: <em>geen</em> vaste kop (gecorrigeerd; <code>0xF0</code> komt alleen voor als
+      waarde van byte&nbsp;0 in de richting M1.1&rarr;T1.1, "niet beschikbaar", en andersom is byte&nbsp;0 het
+      ketelsetpoint), tien databytes, en als sluitbyte een <strong>eenvoudige 8-bits optelsom</strong> &mdash; geen CRC.
+      T1.1's zendlus loopt van SRAM <code>0x7C</code> tot <code>0x88</code> &mdash; precies twaalf &mdash; en
+      zijn eerste twee bytes zijn <code>0x00</code>. M1.1 stuurt hierover onder meer de uit ID2
+      geparste temperaturen en zijn statuscode; T1.1 gebruikt die statuscode voor zijn foutcode-indicator.</p>
+      <p>De statuscode zit op telegram-index 10 en belandt in T1.1 op SRAM <code>0x73</code>. De tabel in
+      <code>sub_0aa0</code> vertaalt hem naar 1&ndash;7 (<code>0x01</code>&rarr;1, <code>0x41</code>&rarr;2,
+      <code>0x46/47/48/52/14/15</code>&rarr;3, <code>0x31</code>&rarr;4, <code>0x45</code>&rarr;5,
+      <code>0x53</code>&rarr;6, overig&rarr;7), met 0 = alles in orde en 100 = vastgelopen.</p>
+      <div class="callout">
+        <span class="eyebrow">Wat de foutcodes zijn &mdash; deels opgehelderd</span>
+        <p>Twee dingen vallen op. Ten eerste: <strong>M1.1 zet zijn statuscode maar op drie waarden</strong>
+        &mdash; 0 bij init, <code>0x01</code> (timeout) en <code>0x64</code> = 100 (vastgelopen). Dat zijn de
+        enige <code>LDI</code>-waarden die naar dat veld worden geschreven. Alle andere ingangen van T1.1's
+        tabel (<code>0x41</code>, <code>0x46</code>, <code>0x52</code> &hellip;) kan deze M1.1-firmware
+        <em>nooit</em> produceren. T1.1 draagt dus een bredere, generieke tabel &mdash; vermoedelijk
+        &eacute;&eacute;n firmware die Atlantic over meerdere modellen inzet.</p>
+        <p>Ten tweede: gelezen als decimale cijfers zijn die waarden 14, 15, 31, 41, 45, 46, 47, 48, 52, 53
+        &mdash; een reeks die sterk lijkt op de storingsnummers die Chofu/Hitachi-buitenunits hanteren. De
+        tabel groepeert ze in zeven weergavecategorie&euml;n. Welk nummer bij welke storing hoort, staat niet
+        in deze firmware; daarvoor is Atlantic/Chofu-servicedocumentatie nodig.
+        <span class="pill open">rest onopgelost</span></p>
+        <p>Dat T1.1 een bredere tabel draagt dan deze M1.1 kan vullen, is inmiddels geen vermoeden meer maar
+        aangetoond: beide chips bevatten dode code van elkaar. Zie <a href="#dekking">de dekkingscontrole</a>.</p>
+      </div>
+    </section>
+
+    <section id="vergelijking">
+      <h2>Vergelijking met chofu_wp.cpp</h2>
+      <div class="callout">
+        <span class="eyebrow">Dit komt uit de binary, niet uit het forum</span>
+        <p>Dat M1.1 vier telegrammen stuurt was al bekend uit WackoH's sketches op het forum. Hieronder staat het uit de binary
+        zelf afgeleid, en dan blijkt het beeld rijker dan "drie vaste plus &eacute;&eacute;n uit een
+        opzoektabel".</p>
+      </div>
+
+      <h3 id="tx-tabel">De uitgaande telegrammen zijn volledig gedecodeerd <span class="pill confirmed">opgelost</span></h3>
+      <p>De flash-tabellen rond <code>0x0baa</code>&ndash;<code>0x0c4f</code> zijn gekraakt. De sleutel zat in
+      <code>sub_083a</code>: de byteteller loopt af van <strong>45</strong>, verdeeld over vier segmenten van
+      15&nbsp;+&nbsp;10&nbsp;+&nbsp;10&nbsp;+&nbsp;10 bytes. Bij <strong>10 bits per byte</strong> is dat exact
+      12&nbsp;+&nbsp;8&nbsp;+&nbsp;8&nbsp;+&nbsp;8 telegrambytes.</p>
+      <p>De codering is: <strong>8 databits LSB-first, dan een stopbit (1) en meteen de startbit (0) van de
+      volgende byte</strong>, aaneengeschakeld en MSB-first in de flash-bytes gepakt. Omdat 10 niet op 8
+      deelt, schuift de framegrens elke byte 2 bits op &mdash; en precies daarom werkt bit-omkering per
+      flash-byte alleen voor de <em>eerste</em> byte (die geeft correct <code>0x19</code>) en loopt het
+      daarna uit de pas. Met de juiste framing valt alles op zijn plek.</p>
+      <div class="callout good">
+        <span class="eyebrow">Waterdicht bewijs</span>
+        <p>Van <strong>elk</strong> gedecodeerd record is de CRC-16/CCITT-FALSE over het hele telegram
+        <strong>0x0000</strong> &mdash; precies de geldigheidseigenschap van dit protocol. Ook alle stopbits
+        staan op hun plaats. De kans dat een verkeerde decodering dat zestien keer op rij haalt, is nul.</p>
+      </div>
+      <p>De vier telegrammen, in de volgorde waarin ze per cyclus worden gezonden:</p>
+      <pre>@0x0bbe (15B)  19 01 0c 00 00 00 00 00 00 00 aa 35   ID1, 12 bytes
+@0x0be2 (10B)  19 02 08 &lt;modus&gt; &lt;stand&gt; 00 &lt;crc&gt;      ID2, variabel  (zie tabel)
+@0x0bce (10B)  19 03 08 b2 02 00 c1 9a               ID3
+@0x0bd8 (10B)  19 00 08 00 00 00 d9 b5               ID0</pre>
+      <p>Het variabele ID2-telegram is geen berekening maar een <strong>vooraf uitgerekende tabel van elf
+      varianten</strong>, geadresseerd als <code>0x0be2 + 10 &times; (stand&nbsp;/&nbsp;4)</code>:</p>
+      <div class="tablewrap"><table>
+        <thead><tr><th>Adres</th><th>Telegram</th><th>Modus</th><th>Stand</th></tr></thead>
+        <tbody>
+          <tr><td class="num">0x0be2</td><td class="num">19 02 08 00 00 00 9d 36</td><td class="num">0x00 = uit</td><td class="num">0</td></tr>
+          <tr><td class="num">0x0bec</td><td class="num">19 02 08 01 01 00 99 37</td><td class="num">0x01 = verwarmen</td><td class="num">1</td></tr>
+          <tr><td class="num">0x0bf6</td><td class="num">19 02 08 01 02 00 cc 64</td><td class="num">0x01</td><td class="num">2</td></tr>
+          <tr><td class="num">&hellip;</td><td class="num">&hellip;</td><td class="num">&hellip;</td><td class="num">3 t/m 9</td></tr>
+          <tr><td class="num">0x0c46</td><td class="num">19 02 08 01 0a 00 45 cd</td><td class="num">0x01</td><td class="num"><strong>10</strong></td></tr>
+        </tbody>
+      </table></div>
+      <div class="callout">
+        <span class="eyebrow">Twee bevindingen die er praktisch uit springen</span>
+        <p><strong>1. Atlantic gebruikt tien standen, de ESP32 maar zeven.</strong> De tabel loopt door tot
+        stand 10, en dat is ook werkelijk bereikbaar: in <code>sub_04be</code> wordt de stand-variabele
+        begrensd op 40 (<code>CPI r16,0x28</code>) en de index is stand&nbsp;/&nbsp;4, dus 40&nbsp;/&nbsp;4 =
+        10. In <code>chofu_wp.h</code> staat <code>max_stand_{7}</code>, en in de YAML is
+        <code>max_stand</code> uitgecommentarieerd &mdash; dus die 7 geldt. Er liggen drie vermogenstrappen
+        ongebruikt.</p>
+        <p><strong>2. Koelen zit er nergens in.</strong> In alle elf varianten is de modusbyte uitsluitend
+        <code>0x00</code> of <code>0x01</code>. Een <code>0x02</code> komt in de hele flash niet voor.
+        Atlantic heeft koelbedrijf via deze binnenunit dus nooit gecommandeerd.</p>
+        <p>Dat betekent alleen niet dat de <em>buitenunit</em> het niet kan.
+        <span class="pill confirmed">gemeten</span> Modus <code>0x02</code> sturen werkt: de compressor
+        start en de aanvoer zakt onder de retour, wat onmiskenbaar koelbedrijf is. De binnenunit vroeg er
+        nooit om, de buitenunit begrijpt het prima. Dat is precies het soort ruimte dat je wint door de
+        controller te vervangen in plaats van hem te bedienen.</p>
+      </div>
+      <p>Ten slotte staan er op <code>0x0baa</code> en <code>0x0bb4</code> nog twee geldige telegrammen
+      (<code>19 02 08 00 ff 00 9e c9</code> en <code>19 03 08 00 00 00 37 67</code>, beide CRC-correct) die
+      door g&eacute;&eacute;n enkele adresberekening in de code worden bereikt &mdash; restanten van een eerdere
+      firmwareversie, of van een variant met een tweede ID3-vorm. <strong>Bewezen</strong> in de volledige analyse van
+      26-10-2026: alle LPM-plekken nagelopen, alle 1.048.576 combinaties van de enige tabel-leesroutine doorgerekend
+      (laagste bereikte adres <code>0x0BBE</code>) en fuzz-runs; ze zijn onbereikbaar. Op de buitenunit gestuurd
+      (stilstaand, 15 en 3 keer) gaven ze geen waarneembare reactie.</p>
+
+      <div class="tablewrap"><table>
+        <thead><tr><th>Aspect</th><th>Atlantic M1.1</th><th>ESP32 chofu_wp.cpp</th></tr></thead>
+        <tbody>
+          <tr><td>Zendtelegrammen</td><td>ID1, ID2, ID3, ID0 per cyclus &mdash; identieke bytes als DATA1/3/0</td><td>4 roterend (DATA0&ndash;3), zelfde inhoud</td></tr>
+          <tr><td>Aantal standen</td><td><strong>1 t/m 10</strong></td><td><strong>1 t/m 7</strong> (drie trappen onbenut)</td></tr>
+          <tr><td>Koelen (modus 0x02)</td><td><strong>nooit</strong> &mdash; alleen 0x00 en 0x01 in flash</td><td>aanwezig en <strong>op hardware bewezen werkend</strong></td></tr>
+          <tr><td>Ontvangst</td><td>parseert ID2 &rarr; aanvoer/retour/buiten, gedeeld door 10</td><td>parseert ID1/2/3, /10 met decimaal</td></tr>
+          <tr><td>CRC-16</td><td>niet berekend maar <strong>vooraf uitgerekend</strong> en in flash meegebakken (nul <code>ROL</code>-instructies in de hele binary)</td><td>live berekend &mdash; flexibeler</td></tr>
+          <tr><td>Buitentemp-lockout</td><td><strong>ja, bij 5 &deg;C</strong> (en bij negatief)</td><td>geen &mdash; regelt puur op aanvoer vs. setpoint</td></tr>
+          <tr><td>Bijstook</td><td>via T1.1's OpenTherm-master-kanaal naar de ketel</td><td>alleen een <em>indicatie</em>-vlag; de gebruiker regelt de ketel zelf</td></tr>
+        </tbody>
+      </table></div>
+      <p>De eindconclusie. Qua <em>telegraminhoud</em> is er geen gat: de bytes
+      die M1.1 zendt zijn byte-voor-byte dezelfde als die de ESP32 opbouwt, en de live CRC-berekening is
+      zelfs algemener dan Atlantics vooraf uitgerekende tabel. Maar qua <em>bereik</em> zijn er twee echte
+      verschillen, beide in het voordeel van de ESP32 op &eacute;&eacute;n punt en in het nadeel op het andere: de
+      5&nbsp;&deg;C-lockout is verdwenen (winst), en het standbereik is van 10 naar 7 teruggebracht (verlies).</p>
+    </section>
+
+    <section id="dekking">
+      <h2>Dekkingscontrole: zit er nog iets in de chips? <span class="pill confirmed">volledig geauditeerd</span></h2>
+      <p>Op de vraag "zit er nog iets in wat we gemist hebben" is het eerlijke antwoord: dat weet je pas als
+      je alles boekt. Daarom is elke byte van beide dumps ingedeeld als code, tabel of leeg. Dat leverde twee
+      nieuwe feiten op en een sluitend bewijs.</p>
+      <div class="tablewrap"><table>
+        <thead><tr><th>Boeking</th><th>M1.1</th><th>T1.1</th></tr></thead>
+        <tbody>
+          <tr><td>Bereikbare code</td><td class="num">2940 B</td><td class="num">~3000 B</td></tr>
+          <tr><td>Telegramtabellen</td><td class="num">166 B</td><td class="num">&mdash;</td></tr>
+          <tr><td><strong>Onbereikbare code</strong></td><td class="num"><strong>12 B</strong></td><td class="num"><strong>116 B</strong></td></tr>
+          <tr><td>Rest van de 8 KB flash</td><td colspan="2">volledig <code>0xFF</code> (onbeschreven)</td></tr>
+          <tr><td>Losse 512 B achter de flash</td><td colspan="2">de EEPROM &mdash; volledig <code>0xFF</code></td></tr>
+        </tbody>
+      </table></div>
+      <div class="callout good">
+        <span class="eyebrow">Waarom dit nu een bewijs is en niet een bewering</span>
+        <p>Geen van beide chips bevat een <code>IJMP</code> of <code>ICALL</code>. Er zijn dus geen berekende
+        sprongen, en daarmee is een recursive-descent-trace vanaf de vectoren <em>aantoonbaar</em> compleet:
+        er kan geen code zijn die alleen via een sprongtabel bereikbaar is. Ook geen enkele
+        EEPROM-schrijfactie en geen <code>SPM</code>, dus niets dat zichzelf tijdens bedrijf aanpast.</p>
+      </div>
+      <h3>Vondst 1: M1.1 heeft dode ADC-code</h3>
+      <p>De 12 onverklaarde bytes op <code>0x0158</code> zijn twee complete, maar <strong>nooit aangeroepen</strong>
+      initroutines (geverifieerd: geen enkele sprong of call komt hier uit):</p>
+      <pre>0158  LDI r16, 0x86 / OUT ADCSRA, r16 / RET   &lt;- zet de ADC aan (prescaler /64)
+015e  LDI r16, 0x40 / OUT ACSR,   r16 / RET   &lt;- zet de comparator aan (bandgap)</pre>
+      <p>Een eerdere revisie las dus een analoge sensor uit. In deze build is die mogelijkheid bewust
+      uitgeschakeld door de aanroep te verwijderen. Dat bevestigt de eerdere conclusie dat M1.1 geen eigen
+      sensor gebruikt &mdash; maar nu met de nuance dat de hardware-voorziening er wel was.</p>
+      <h3>Vondst 2: de "gedeelde firmware"-theorie is nu bewezen</h3>
+      <p>De tweede dode routine in M1.1 is <strong>byte voor byte identiek</strong> aan <code>sub_015c</code>
+      in T1.1 &mdash; waar hij w&eacute;l wordt aangeroepen, als OpenTherm-ontvangstweg. Omgekeerd bevat T1.1
+      116 bytes onbereikbare code in drie blokken, waarvan twee onderling identiek. Onder die dode code zit
+      een pad dat het pariteitsbit omklapt en bit&nbsp;0 van de statusdata zet &mdash; in OpenTherm het
+      <strong>storingsbit</strong>, dus een "meld een fout aan Anna"-route die deze build nooit neemt.</p>
+      <p>Dat beide chips dode code van elkaar bevatten, maakt van de eerdere veronderstelling een vaststelling:
+      Atlantic compileert <strong>&eacute;&eacute;n gedeelde codebasis per model</strong> en laat de ongebruikte paden
+      in flash staan. Dat verklaart ook waarom T1.1's foutcodetabel veel meer waarden kent dan deze M1.1
+      ooit kan versturen.</p>
+      <div class="callout">
+        <span class="eyebrow">En wat dit uitsluit</span>
+        <p>Omdat de EEPROM leeg is en geen van beide chips er ooit naar schrijft, bestaat er
+        <strong>geen opgeslagen configuratie</strong>: geen kalibratie, geen inbedrijfstellingsparameters,
+        niets. Alles zit hardcoded in flash. De 5&nbsp;&deg;C-grens was dus ook niet instelbaar geweest, hoe
+        diep een installateur ook in een servicemenu had gekeken.</p>
+      </div>
+    </section>
+
+    <section id="open">
+      <h2>Open vragen</h2>
+      <p>Inmiddels is de brug nagebouwd en op echte hardware gedraaid, dus een deel hiervan is niet meer
+      afgeleid maar gemeten &mdash; zie <a href="#hardware">Op hardware bevestigd</a>. Wat resteert:</p>
+      <ol>
+        <li><span class="pill open">Deels open</span> <strong>De rest van de printtopologie.</strong> Nog niet
+        doorgemeten: waar de collector van Q4 uitkomt, waar de basis van Q1 vandaan komt, de common van K1, wat
+        K2 precies schakelt, en waar dip-pin&nbsp;3 en de gelijkrichterbrug op uitkomen. Zie
+        <a href="#print">De print doorgemeten</a> voor wat er w&eacute;l ligt.</li>
+        <li><span class="pill open">Onopgelost</span> <strong>Wat PB3 doet.</strong> Wel scherper in beeld:
+        PC3 draagt de echte telegrammen uit flash (CRC-geverifieerd), terwijl PB3 in hetzelfde tempo bytes
+        uit de RX-buffer op <code>0x7b</code> uitschuift. Die stroom heeft g&eacute;&eacute;n geldige
+        UART-framing, dus PB3 kan geen tweede protocollijn zijn &mdash; een diagnose-/echo-uitgang of een
+        niet-bevolkte voorziening in deze printversie is aannemelijker. Voor het nabouwen van M1.1's gedrag
+        maakt het niets uit: het commando zit volledig op PC3.</li>
+        <li><span class="pill open">Rest onopgelost</span> <strong>Welke storing bij welk foutnummer hoort.</strong>
+        Dat de nummers uit de buitenunit komen en in zeven categorie&euml;n worden gegroepeerd is nu duidelijk
+        (zie hierboven), maar de betekenis per nummer staat niet in deze firmware. Daarvoor is
+        servicedocumentatie nodig.</li>
+
+      </ol>
+      <div class="callout good">
+        <span class="eyebrow">Opgelost in deze ronde</span>
+        <ul style="margin:0">
+          <li>De flash-tabellen zijn <strong>volledig</strong> gedecodeerd: vier telegrammen plus elf
+          per-stand-varianten, alle met CRC&nbsp;=&nbsp;0 &mdash; inclusief de exacte bitcodering.</li>
+          <li>PD3/PD4 op T1.1 zijn <strong>toegewezen</strong> zonder doormeten: PD4 + comparator =
+          thermostaat (slave), PD3 + PD5 = CV-ketel (master). De thermostaatkant is daarna ook
+          <strong>gemeten</strong>: 124 flanken per twee seconden op socket-pin&nbsp;13, wat WackoH's
+          "pin&nbsp;13 = GND" weerlegt.</li>
+          <li>De <strong>kloksnelheid</strong> is vastgesteld op 8&nbsp;MHz, langs drie onafhankelijke wegen:
+          de Timer1-herlaadwaarden van beide chips, het kristal onder de IC2-voet, en de gemeten
+          intervaltijd van de nagebouwde firmware.</li>
+          <li>De <strong>Manchester-codering en de comparator-leesrichting</strong> zijn bevestigd doordat een
+          nagebouwde ontvanger frames van een echte thermostaat met kloppende pariteit decodeert.</li>
+          <li>De 5&nbsp;&deg;C-lockout is gevonden en verklaard, en blijkt samen te vallen met de praktijk.</li>
+          <li><strong>Het relais op socket-pin&nbsp;16 is de noodbrug.</strong> PB2 stuurt via T3 K1 en K2
+          tegelijk aan, en die verleggen het aderpaar van de thermostaat rechtstreeks naar de ketel. Dat
+          verklaart meteen waarom T1.1 zonder dat relais ook stopt met rapporteren aan IC1.</li>
+          <li><strong>PC5 stuurt K3 aan</strong>, een droog 10&nbsp;A-contact voor een AAN/UIT-ketel &mdash;
+          Atlantic's tweede keteltype. Uit de firmware alleen lijkt het een statusuitgang, want hij wordt
+          nergens anders geschreven; het koper laat een contact van 10&nbsp;A zien.</li>
+          <li><strong>Socket-pin&nbsp;6 komt inderdaad op de thermostaatklem uit</strong>, via een discrete
+          hoogzijdedriver (T1&nbsp;&rarr;&nbsp;Q4) op de 18&nbsp;V. Een echte thermostaat reageert op de
+          antwoorden van de nagebouwde brug.</li>
+          <li><strong>De "buitentemperatuur" uit ID&nbsp;2 is echt de buitenlucht</strong>, geen
+          verdampervoeler. Over 350 uur vergeleken met een tweede thermostaat leest hij consequent
+          ~2,5&nbsp;&deg;C hoger, en &mdash; dit is het bewijs &mdash; <strong>dat verschil verandert niet
+          als de compressor draait</strong> (mediaan +2,6 stil tegen +2,5 in bedrijf). Een verdamper zou
+          onder belasting juist wegzakken. Die offset van 2,5 is normaal voor een voeler aan een gevel
+          tegenover een weerdienstwaarde in de schaduw, en je moet hem meerekenen als je op die waarde
+          stuurt.</li>
+        </ul>
+      </div>
+      <div class="callout">
+        <span class="eyebrow">Concreet punt voor de ESP32</span>
+        <p><span class="pill confirmed">doorgevoerd</span> Het standbereik. Atlantic moduleert 1 t/m 10,
+        <code>chofu_wp</code> stond op <code>max_stand_{7}</code>. Dat plafond is inmiddels naar 10 te zetten
+        en in <code>aurea-wp.yaml</code> geactiveerd. De telegrammen voor stand 8, 9 en 10 zijn bekend en
+        CRC-correct, dus dit is een &eacute;&eacute;nregelige wijziging. Wel eerst controleren of jouw buitenunit
+        die trappen ondersteunt &mdash; de tabel zit in de binnenunit-firmware en zegt niets over wat de
+        compressor aankan.</p>
+      </div>
+    </section>
+
+    <section id="bestanden">
+      <h2>Bestanden</h2>
+      <p>Alle bestanden staan naast dit document in dezelfde map. De listings zijn opnieuw gegenereerd met
+      de gecorrigeerde disassembler.</p>
+
+      <h3>Bronmateriaal en listings</h3>
+      <p>De ruwe flash-dumps van de twee chips en de volledige disassembly-listings staan <strong>niet</strong> in
+      deze publieke map: ze bevatten de firmware van de fabrikant. Wie zelf een dump uitleest, kan met de scripts
+      in <code>analyse-volledig/</code> alles opnieuw genereren (zie <code>README.md</code>).</p>
+
+      <h3>Reconstructies</h3>
+      <ul class="filelist">
+        <li><a href="Haddon_M1.1_reversed.ino">Haddon_M1.1_reversed.ino</a>
+          <span class="desc">C-reconstructie IC1 &middot; verouderd, zie waarschuwing</span></li>
+        <li><a href="Haddon_T1.1_reversed.ino">Haddon_T1.1_reversed.ino</a>
+          <span class="desc">C-reconstructie IC2 &middot; verouderd, zie waarschuwing</span></li>
+      </ul>
+      <div class="callout">
+        <span class="eyebrow">Waarschuwing bij de twee reconstructies</span>
+        <p>Beide <code>.ino</code>-bestanden dateren van v&oacute;&oacute;r de SBRS/SBRC-fix en bevatten daardoor nog
+        omgekeerde conditionals; ze missen bovendien de temperatuur-parser en de 5&nbsp;&deg;C-lockout. Bovenin
+        elk bestand staat een blok dat precies opsomt wat er niet klopt. Dit verslag en de listings zijn
+        leidend.</p>
+      </div>
+      <p style="font-size:.86rem;color:var(--muted);font-family:var(--sans)">De links werken zolang dit
+      document in dezelfde map staat als de bestanden. Bekijk je deze pagina via een gedeelde webversie,
+      dan zijn de bestanden daar niet meegepubliceerd.</p>
+    </section>
+
+    <footer>
+      Gebaseerd op twee zelf uitgelezen flash-dumps. Geen enkel bestand hierboven is originele
+      Atlantic-broncode &mdash; het zijn reconstructies, met het vertrouwensniveau per bevinding expliciet
+      gemarkeerd. Waar een voor de hand liggende lezing van de firmware niet klopt, staat dat erbij in
+      plaats van dat alleen het eindantwoord wordt gegeven.
+    </footer>
+  </main>
+</div>

@@ -1,0 +1,7 @@
+Chip M1.1
+Flash 8192 B, telling per categorie (bytes): {"vector": 8, "vector-leeg": 30, "vrij-0xFF": 5044, "code-live": 2932, "code-dood": 12, "data-tabel": 166}
+Live instructies: 1470 ; dode instructies: 6
+ONVERKLAARD bytes: 0
+Round-trip A (eigen encoder, byte voor byte): OK (verschillen 0)
+Round-trip B (avr-as assembleert listing, byte voor byte): OK (lengte 8192, verschillen 0) stderr=
+Vergelijking C (avr-objdump vs eigen decode): 1476 instructies, 0 afwijkingen

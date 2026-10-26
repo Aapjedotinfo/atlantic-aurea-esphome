@@ -1,0 +1,3 @@
+LPM-plaatsen (flash-leesinstructies) in T1.1:
+
+Overige instructies die programmageheugen/Z in controle-flow gebruiken: IJMP/ICALL/EIJMP/EICALL/SPM: geen

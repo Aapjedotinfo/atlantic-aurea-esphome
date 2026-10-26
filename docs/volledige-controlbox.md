@@ -51,7 +51,7 @@ DIP28, ATmega8. Alleen de pinnen die er nu toe doen.
 | 24 | PC1 | test-knop (actief bij LAAG) | optioneel |
 | 14 | PB0 | vraagrelais "roep de WP aan" | optioneel |
 | 15 | PB1 | statuslampje (aan bij storing) | optioneel |
-| 17 | PB3 | tweede bitstroom, functie onopgehelderd | nee |
+| 17 | PB3 | echo van de laatst ontvangen buitenunit-bytes, doel onbekend | nee |
 
 ## Pinout IC2-socket (was "Haddon T1.1")
 

@@ -1,0 +1,48 @@
+== M1.1
+LDI Z-paren met waarde >= 0x0100 (kandidaat flash-adres): ['0x074e->0x0bbe', '0x092a->0x0bd8', '0x095e->0x0bce', '0x09a8->0x0be2', '0x09e4->0x0bbe']
+Aantal LDI Z-paren met RAM/IO-waarde (<0x100): 156
+Overige schrijvers van r30/r31 (niet-LDI):
+   0x00ea  eor r30, r30
+   0x00ec  eor r31, r31
+   0x094c  add r30, r16
+   0x094e  adc r31, r19
+   0x0984  add r30, r16
+   0x0986  adc r31, r19
+   0x09d0  add r30, r16
+   0x09d2  adc r31, r19
+   0x0a0a  add r30, r16
+   0x0a0c  adc r31, r19
+   0x0b4c  pop r31
+   0x0b4e  pop r30
+   0x0b7e  pop r31
+   0x0b80  pop r30
+LPM/SPM-plaatsen: [(1874, 'lpm'), (2594, 'lpm')]
+IJMP/ICALL/JMP/CALL: geen
+
+== T1.1
+LDI Z-paren met waarde >= 0x0100 (kandidaat flash-adres): geen
+Aantal LDI Z-paren met RAM/IO-waarde (<0x100): 105
+Overige schrijvers van r30/r31 (niet-LDI):
+   0x011a  eor r30, r30
+   0x011c  eor r31, r31
+   0x049a  ld r16, Z+
+   0x049e  ld r16, Z+
+   0x04a8  ld r16, Z+
+   0x04b8  sbiw r30, 1
+   0x0504  ld r16, Z+
+   0x0514  sbiw r30, 1
+   0x0532  ld r16, Z+
+   0x0536  ld r16, Z+
+   0x054c  ld r16, Z+
+   0x0550  ld r16, Z+
+   0x0640  ld r16, Z+
+   0x0644  ld r16, Z+
+   0x066a  ld r16, Z+
+   0x066e  ld r16, Z+
+   0x0c80  pop r31
+   0x0c82  pop r30
+   0x0cae  pop r31
+   0x0cb0  pop r30
+LPM/SPM-plaatsen: geen
+IJMP/ICALL/JMP/CALL: geen
+

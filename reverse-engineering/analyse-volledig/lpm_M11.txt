@@ -1,0 +1,5 @@
+LPM-plaatsen (flash-leesinstructies) in M1.1:
+  0x0752 in seconden_watchdog_66 ; Z-constante bekend uit LDI: 0x0bbe
+  0x0a22 in tx666_machine ; Z-constante bekend uit LDI: nee (opgebouwd)
+
+Overige instructies die programmageheugen/Z in controle-flow gebruiken: IJMP/ICALL/EIJMP/EICALL/SPM: geen
