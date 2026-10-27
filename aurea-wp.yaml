@@ -2254,6 +2254,9 @@ text_sensor:
   - platform: template
     name: "Keteltype (dipswitch)"
     lambda: |-
+      // Zonder bericht van de AVR is dit bit nooit gelezen: dan is "Aan/uit-ketel"
+      // alleen de beginwaarde en zou het een meting lijken.
+      if (!id(otlink)->get_link_ok()) return std::string("Onbekend (brug niet verbonden)");
       return id(otlink)->get_front_switch() ? std::string("OpenTherm-ketel")
                                             : std::string("Aan/uit-ketel");
     update_interval: 10s
