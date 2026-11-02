@@ -127,6 +127,8 @@ class ChofuWP : public PollingComponent, public uart::UARTDevice {
   void set_room_off_when_warm(bool b) { room_off_warm_ = b; }
   void set_room_hyst_off(float k) { room_hyst_off_ = k; }
   void set_room_hyst_on(float k) { room_hyst_on_ = k; }
+  // Minimale tijd tussen twee wisselingen van de kamervraag (ms, 0 = uit).
+  void set_room_min_hold(uint32_t ms) { room_min_hold_ms_ = ms; }
   bool get_room_fresh() const;
   float get_room_temp() const { return room_temp_; }
 
@@ -253,6 +255,8 @@ class ChofuWP : public PollingComponent, public uart::UARTDevice {
   // Hysterese rond het kamerdoel voor "uit als de kamer warm is": uit boven doel + off, aan onder doel - on.
   float room_hyst_off_{0.2f};
   float room_hyst_on_{0.2f};
+  uint32_t room_min_hold_ms_{0};
+  uint32_t room_demand_ms_{0};
   bool room_demand_{true};
   bool above_heat_limit_{false};
 

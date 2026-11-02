@@ -612,6 +612,28 @@ number:
       sorting_group_id: grp_stooklijn
       sorting_weight: 6.2
 
+  # Minimale schakeltijd voor "Uit als de kamer warm is": na uit- of aanschakelen door de kamer blijft
+  # die toestand minstens zo lang. Tegen pendelen door koken en apparaten. 0 = uit (zoals voorheen).
+  - platform: template
+    name: "Kamer: minimale schakeltijd"
+    id: n_room_min_hold
+    min_value: 0
+    max_value: 120
+    step: 1
+    initial_value: 0
+    optimistic: true
+    restore_value: true
+    unit_of_measurement: "min"
+    mode: box
+    icon: mdi:timer-sand
+    entity_category: config
+    on_value:
+      then:
+        - lambda: 'id(wp)->set_room_min_hold((uint32_t) (x * 60000.0f));'
+    web_server:
+      sorting_group_id: grp_stooklijn
+      sorting_weight: 6.3
+
   # Kamerinvloed alleen blijft altijd een beetje naast het doel zitten. De
   # nastelling telt per minuut zoveel graden aanvoer op per graad fout, tot de
   # kamer er is (begrensd op -8 .. +12). 0 = uit. Begin klein, bv. 0,1.

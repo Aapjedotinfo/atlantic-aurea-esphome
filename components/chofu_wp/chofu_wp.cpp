@@ -381,12 +381,21 @@ float ChofuWP::target_supply_(uint32_t now) {
   const float fout = room_target_ - room_temp_;  // > 0 = te koud
 
   if (room_off_warm_) {
-    if (room_demand_ && fout < -room_hyst_off_)
-      room_demand_ = false;
-    else if (!room_demand_ && fout > room_hyst_on_)
-      room_demand_ = true;
+    // Minimale schakeltijd: na een wisseling van vraag blijft die minstens zo lang staan, zodat
+    // koken of apparaten in huis hem niet steeds aan en uit zetten. 0 = zoals voorheen.
+    const bool vast_houden = room_min_hold_ms_ > 0 && room_demand_ms_ != 0 && (now - room_demand_ms_) < room_min_hold_ms_;
+    if (!vast_houden) {
+      if (room_demand_ && fout < -room_hyst_off_) {
+        room_demand_ = false;
+        room_demand_ms_ = now;
+      } else if (!room_demand_ && fout > room_hyst_on_) {
+        room_demand_ = true;
+        room_demand_ms_ = now;
+      }
+    }
   } else {
     room_demand_ = true;
+    room_demand_ms_ = 0;
   }
 
   // Nastelling: eens per minuut, en alleen zolang er vraag is.
