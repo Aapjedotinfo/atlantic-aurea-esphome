@@ -349,8 +349,9 @@ desgewenst bij zetten:
 
 - **Kamer-nastelling** (standaard 0 = uit): telt per minuut wat aanvoer op zolang
   de kamer te koud is, zodat hij het doel ook echt haalt. Begin klein (0,1).
-- **Uit als de kamer warm is** (standaard uit): unit uit zodra de kamer 0,2 °C
-  boven het doel komt, weer aan als hij 0,2 °C eronder zakt. Staat deze uit, dan
+- **Uit als de kamer warm is** (standaard uit): unit uit zodra de kamer *Kamer: uit boven doel*
+  (standaard 0,2 °C) boven het doel komt, weer aan als hij *Kamer: aan onder doel* (standaard 0,2 °C)
+  eronder zakt. Beide los instelbaar, 0 tot 1 °C. Staat deze uit, dan
   blijft de stooklijn altijd gelden en schuift de kamer hem alleen op.
 
 Waar de kamertemperatuur vandaan komt:
@@ -399,7 +400,7 @@ Assistant zie je dezelfde namen.
 |---|---|
 | **Warmtepomp** | Setpoint aanvoer, Doel aanvoer, Regeling, Modus, Systeem, Handmatige stand, Aanvoer, Retour, Delta T, Buiten, Stand, Vermogen, Compressor, Actief, Ontdooien |
 | **Thermostaat** | Kamertemperatuur, Gewenste kamertemperatuur, Warmtevraag, Tapwatervraag, Thermostaat op afstand, Verbonden |
-| **Stooklijn en kamertemperatuur** | Kamertemperatuur extern, Gewenste kamertemperatuur extern, Kamertemperatuur ontvangen, Kamerinvloed, Kamer-nastelling, Uit als de kamer warm is, Verlooptijd kamertemperatuur, Stooklijn aanvoer bij −10 / +15 °C, Stookgrens buiten, Stooklijn aanvoer |
+| **Stooklijn en kamertemperatuur** | Kamertemperatuur extern, Gewenste kamertemperatuur extern, Kamertemperatuur ontvangen, Kamerinvloed, Kamer-nastelling, Uit als de kamer warm is, Kamer: uit boven doel, Kamer: aan onder doel, Verlooptijd kamertemperatuur, Stooklijn aanvoer bij −10 / +15 °C, Stookgrens buiten, Stooklijn aanvoer |
 | **CV-ketel** | Keteltemperatuur, Ketelretour, Ketel delta T, Ketelmodulatie, Gevraagd ketelsetpoint, Setpoint naar de ketel, CV actief, Tapwater actief, Vlam, Ketelstoring, Verbonden, Ketelsetpoint zonder thermostaat, Waterdruk CV, Tapwatertemperatuur |
 | **Bijstookbeleid** | Thermostaat stuurt warmtepomp, Bijstook blokkeren, Bijstook geblokkeerd, Ketelsetpoint in rust, Tekort warmtepomp, Bijstookreden, Maximale aanvoer warmtepomp, Extra aanvoer boven de thermostaat, Wachttijd voor bijstook, Bijstook pas onder buitentemperatuur, Ketelsetpoint bij bijstook, Maximale ketelmodulatie, Comfort gaat voor gas besparen, WP-temperaturen tonen |
 | **Instellingen** | Koelen, Stap-interval, Stap-interval omlaag, Stopvertraging, Maximale stand warmtepomp, Vervaltijd stand-plafond, Delta-T-grens, Middeling aanvoer, Vooruitkijktijd aanvoer, Opschakelen pas onder stijging, Setpoint-oploop per minuut, Statuslampje |

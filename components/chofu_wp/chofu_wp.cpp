@@ -381,9 +381,9 @@ float ChofuWP::target_supply_(uint32_t now) {
   const float fout = room_target_ - room_temp_;  // > 0 = te koud
 
   if (room_off_warm_) {
-    if (room_demand_ && fout < -ROOM_HYST)
+    if (room_demand_ && fout < -room_hyst_off_)
       room_demand_ = false;
-    else if (!room_demand_ && fout > ROOM_HYST)
+    else if (!room_demand_ && fout > room_hyst_on_)
       room_demand_ = true;
   } else {
     room_demand_ = true;

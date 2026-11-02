@@ -122,9 +122,11 @@ class ChofuWP : public PollingComponent, public uart::UARTDevice {
   // Kamer-nastelling: °C aanvoer die er per minuut per °C fout bijkomt, zodat
   // het doel ook echt gehaald wordt. 0 = uit (alleen kamerinvloed, zoals Anna).
   void set_room_integral(float ki) { room_ki_ = ki; }
-  // Uit zodra de kamer ROOM_HYST boven het doel komt; weer aan als hij
-  // ROOM_HYST eronder zakt.
+  // Uit zodra de kamer room_hyst_off_ boven het doel komt; weer aan als hij
+  // room_hyst_on_ eronder zakt (beide standaard 0,2 °C, los instelbaar).
   void set_room_off_when_warm(bool b) { room_off_warm_ = b; }
+  void set_room_hyst_off(float k) { room_hyst_off_ = k; }
+  void set_room_hyst_on(float k) { room_hyst_on_ = k; }
   bool get_room_fresh() const;
   float get_room_temp() const { return room_temp_; }
 
@@ -167,8 +169,6 @@ class ChofuWP : public PollingComponent, public uart::UARTDevice {
   // Vooruitkijken: pas eerder terugschakelen als de verwachte aanvoer zoveel
   // graden boven het setpoint uitkomt.
   static constexpr float BRAKE_OVERSHOOT_K = 1.0f;
-  // Kamertemperatuur: hysterese rond het kamerdoel voor "uit als de kamer warm is".
-  static constexpr float ROOM_HYST = 0.2f;
   // Grenzen van de kamer-nastelling (°C aanvoer).
   static constexpr float ROOM_I_MIN = -8.0f, ROOM_I_MAX = 12.0f;
   // Ondergrens van een doel uit stooklijn of kamertemperatuur: kouder water
@@ -250,6 +250,9 @@ class ChofuWP : public PollingComponent, public uart::UARTDevice {
   float room_i_{0.0f};
   uint32_t room_i_ms_{0};
   bool room_off_warm_{false};
+  // Hysterese rond het kamerdoel voor "uit als de kamer warm is": uit boven doel + off, aan onder doel - on.
+  float room_hyst_off_{0.2f};
+  float room_hyst_on_{0.2f};
   bool room_demand_{true};
   bool above_heat_limit_{false};
 

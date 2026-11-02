@@ -570,6 +570,48 @@ number:
       sorting_group_id: grp_stooklijn
       sorting_weight: 4
 
+  # Hysterese van "Uit als de kamer warm is": uit zodra de kamer zoveel boven het doel komt,
+  # weer aan zodra hij zoveel eronder zakt. Los instelbaar (idee van _JGC_, Tweakers).
+  - platform: template
+    name: "Kamer: uit boven doel"
+    id: n_room_hyst_off
+    min_value: 0
+    max_value: 1
+    step: 0.1
+    initial_value: 0.2
+    optimistic: true
+    restore_value: true
+    unit_of_measurement: "°C"
+    mode: box
+    icon: mdi:thermometer-chevron-up
+    entity_category: config
+    on_value:
+      then:
+        - lambda: 'id(wp)->set_room_hyst_off(x);'
+    web_server:
+      sorting_group_id: grp_stooklijn
+      sorting_weight: 6.1
+
+  - platform: template
+    name: "Kamer: aan onder doel"
+    id: n_room_hyst_on
+    min_value: 0
+    max_value: 1
+    step: 0.1
+    initial_value: 0.2
+    optimistic: true
+    restore_value: true
+    unit_of_measurement: "°C"
+    mode: box
+    icon: mdi:thermometer-chevron-down
+    entity_category: config
+    on_value:
+      then:
+        - lambda: 'id(wp)->set_room_hyst_on(x);'
+    web_server:
+      sorting_group_id: grp_stooklijn
+      sorting_weight: 6.2
+
   # Kamerinvloed alleen blijft altijd een beetje naast het doel zitten. De
   # nastelling telt per minuut zoveel graden aanvoer op per graad fout, tot de
   # kamer er is (begrensd op -8 .. +12). 0 = uit. Begin klein, bv. 0,1.
