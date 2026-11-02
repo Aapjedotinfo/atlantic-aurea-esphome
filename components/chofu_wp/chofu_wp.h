@@ -43,10 +43,10 @@ class ChofuWP : public PollingComponent, public uart::UARTDevice {
   int get_stand() const { return stand_; }             // Wat WIJ commanderen
   int get_max_stand() const { return max_stand_; }
   float get_setpoint() const { return setpoint_; }      // Het vaste setpoint (modus auto)
-  int get_wp_speed() const { return wp_speed_; }        // Wat de WP rapporteert (ID3 byte 9, eigenlijk de stroom)
+  int get_wp_speed() const { return wp_speed_; }        // Wat de WP rapporteert (ID3 byte 9: volgt het vermogen, geen stroom)
   // Extra waarden uit de buitenunit, naar de byte-map van WackoH (Tweakers en GitHub issue #1). NAN of -1 tot het bericht binnen is.
   float get_freq() const { return freq_; }               // compressorfrequentie in Hz (ID3 byte 3 x 2/3)
-  float get_current() const { return current_; }         // stroom in A (ID3 byte 9 / 5)
+  float get_current() const { return current_; }         // stroom in A (ID3 byte 10 / 10)
   float get_fan_rpm() const { return fan_rpm_; }         // werkelijke ventilator (ID3 byte 4 x 10)
   float get_fan_set_rpm() const { return fan_set_rpm_; } // ventilator-setpoint (ID1 byte 10 x 10)
   float get_eev() const { return eev_; }                 // expansieventiel (ID3 byte 6 x 2 pulsen)
@@ -58,7 +58,7 @@ class ChofuWP : public PollingComponent, public uart::UARTDevice {
   float get_t_suction() const { return t_suction_; }     // zuigtemperatuur (ID2 byte 12, raw/2 - 41)
   float get_t_discharge() const { return t_discharge_; } // persgastemperatuur (ID2 byte 13, direct in graden)
   float get_t_water() const { return t_water_; }         // temperatuur waterzijde (ID2 byte 14, raw/2 - 41)
-  float get_power() const { return wp_power_w_; }       // Echt vermogen (W)
+  float get_power() const { return wp_power_w_; }       // Vermogen (W), ID3 byte 10 x 25,6
   bool get_defrost() const { return defrost_; }
   bool get_running() const { return stand_ > 0; }
   bool get_comm_ok() const {

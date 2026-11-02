@@ -176,6 +176,9 @@ void ChofuWP::finish_frame_() {
       break;
     case 3:
       wp_speed_ = frame_[9];
+      // 2-11-2026 tegen een Shelly nagemeten (48 uur): byte 10 volgt het vermogen met ~24 W per telling
+      // (+ ~100 W pomp/elektronica): byte 10 is de stroom in 0,1 A (WackoH). Byte 9 loopt er recht mee
+      // (ongeveer 1,16 x byte 10) maar is GEEN stroom in 0,2 A zoals hier eerder stond.
       wp_power_w_ = 25.6f * frame_[10];
       // Naar de byte-map van WackoH: byte 3 = compressorfrequentie (x 2/3 Hz), byte 4 = ventilator (x10 rpm),
       // byte 6 = expansieventiel (x2 pulsen), byte 8 = statusbits (bit 0 ontdooien), byte 9 = stroom (/5 A).
@@ -183,7 +186,7 @@ void ChofuWP::finish_frame_() {
       fan_rpm_ = frame_[4] * 10.0f;
       eev_ = frame_[6] * 2.0f;
       status8_ = frame_[8];
-      current_ = frame_[9] / 5.0f;
+      current_ = frame_[10] / 10.0f;
       pump_byte_ = frame_[13];
       break;
     default:

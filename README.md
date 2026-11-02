@@ -232,8 +232,10 @@ laat de CRC op 0 staan, dus de controle werkt met en zonder). Berekend per beric
   Let op: ID2 wisselt af tussen twee payload-varianten; de temperatuur-bytes
   staan in beide op dezelfde plek, de staart erna verschilt (nog niet ontcijferd).
 - **ID3** — byte 3 = compressorfrequentie (Hz = byte × 2/3), byte 4 = werkelijke ventilator (×10 rpm),
-  byte 6 = expansieventiel (×2 pulsen), byte 8 = statusbits (bit 0 = ontdooien), byte 9 = stroom
-  (A = byte / 5), byte 10 = vermogen (W = 25.6 × byte). (Eerder stond hier byte 9 als compressorsnelheid: dat is de stroom.)
+  byte 6 = expansieventiel (×2 pulsen), byte 8 = statusbits (bit 0 = ontdooien), byte 9 = loopt recht mee met
+  het vermogen (ongeveer 1,16 × byte 10, geen stroom en geen compressorsnelheid), byte 10 = stroom in 0,1 A (WackoH; A = byte / 10)
+  en tegelijk de maat voor het vermogen (W = 25.6 × byte). Over 48 uur tegen een Shelly gelegd: 24 W per telling + ~100 W
+  voor pomp en elektronica. 230 V × 0,1 A = 23 W: dat past bij een stroom van 0,1 A per telling.
 - **ID1** — byte 3 = bedrijfsstatus (0x50 verwarmen, 0x40 stop voor of tijdens ontdooien, 0x00 uit), byte 4 = **ontdooien
   actief** (0/1), byte 10 = ventilator-setpoint (×10 rpm).
 - **ID2, gegevenspagina** (byte 9 = 0): byte 11 = ontdooi-/spoeltemperatuur, byte 12 = zuigtemperatuur (beide raw/2 − 41),
