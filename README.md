@@ -353,7 +353,10 @@ desgewenst bij zetten:
   (standaard 0,2 °C) boven het doel komt, weer aan als hij *Kamer: aan onder doel* (standaard 0,2 °C)
   eronder zakt. Beide los instelbaar, 0 tot 1 °C. *Kamer: minimale schakeltijd* (standaard 0 = uit, tot 120 min)
   houdt de gekozen toestand minstens zo lang vast, tegen pendelen door koken en apparaten. Staat deze uit, dan
-  blijft de stooklijn altijd gelden en schuift de kamer hem alleen op.
+  blijft de stooklijn altijd gelden en schuift de kamer hem alleen op. Let op: dan is er altijd warmtevraag
+  en blijft de aanvoer minimaal op 20 °C staan, ook als de kamer boven het doel zit (bijvoorbeeld bij een
+  nachtverlaging). De unit draait dan in cycli: aan tot de aanvoer boven 20 °C komt, uit, en weer aan zodra
+  hij eronder zakt. Wil je dat niet, zet deze optie dan aan, eventueel met een minimale schakeltijd van 15 tot 30 min.
 
 Waar de kamertemperatuur vandaan komt:
 
