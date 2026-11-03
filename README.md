@@ -532,7 +532,8 @@ repo gehaald, dus alles kan in de webinterface.
      avr_brug:
        url: https://github.com/Aapjedotinfo/atlantic-aurea-esphome
        ref: main
-       files: [avr-brug-v${avr_versie}.yaml]
+       files:
+         - avr-brug-v${avr_versie}.yaml
    ```
 
    Zet ook `avr_versie` bovenin op `"1"` of `"2"` (zie *Welke AVR-brug heb je?*).
