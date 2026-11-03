@@ -4,6 +4,8 @@
 substitutions:
   ot_ns: aurea_link
   avr_verwacht: "AVR-brug v1 (firmware/avr-bridge/avr-bridge.hex)"
+  # De AVR meldt de dipswitch (PC2); aurea-wp.yaml toont hem bij "Keteltype (dipswitch)".
+  dip_bekend: "true"
   # Is er een thermostaat? Aan als de AVR dat meldt, of als er in de laatste 10 s een bericht van de thermostaat
   # (Data-ID 0) binnenkwam.
   thermo_ok: "id(otlink)->get_thermostat_ok() || ([&]() { const int a = id(otlink)->get_ot_age(0, ${ot_ns}::OT_FROM_STAT); return a >= 0 && a <= 10; })()"

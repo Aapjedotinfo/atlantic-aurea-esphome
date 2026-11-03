@@ -7,6 +7,8 @@
 #
 #    "1" = AVR-brug v1  (firmware/avr-bridge/avr-bridge.hex, 9600 baud)
 #    "2" = AVR-brug v2  (firmware/avr-bridge-v2/avr-bridge-v2.hex, 38400 baud)
+#    "org" = de ORIGINELE IC2 (ATmega8) blijft in de voet; geen AVR programmeren nodig, maar veel minder
+#            functies en nog niet op echte hardware geprobeerd (zie docs/ic2-origineel.md)
 #
 #  Weet je het niet? Vraag het degene die de AVR heeft gebrand. Kies je de
 #  verkeerde versie, dan praten de ESP32 en de AVR niet met elkaar: "Brug
@@ -14,10 +16,12 @@
 #  thermostaat gewoon volgen (de brug valt terug, bij v2 na enkele minuten),
 #  dus het huis blijft warm.
 #
-#  Verander de waarde hieronder van KIES_... naar 1 of 2 (met aanhalingstekens).
+#  Verander de waarde hieronder van KIES_... naar 1, 2 of org (met aanhalingstekens).
 # ═════════════════════════════════════════════════════════════════
 substitutions:
-  avr_versie: "KIES_1_OF_2_ZIE_COMMENTAAR_BOVENIN"
+  avr_versie: "KIES_1_2_OF_ORG_ZIE_COMMENTAAR_BOVENIN"
+  # Alleen bij avr_versie "org": "true" = alleen de frames van de originele IC2 meelezen en loggen, niets zenden.
+  # org_alleen_luisteren: "true"
   name: "aurea-wp"
   friendly_name: Aurea Warmtepomp
 
@@ -2326,6 +2330,8 @@ text_sensor:
       // Zonder bericht van de AVR is dit bit nooit gelezen: dan is "Aan/uit-ketel"
       // alleen de beginwaarde en zou het een meting lijken.
       if (!id(otlink)->get_link_ok()) return std::string("Onbekend (brug niet verbonden)");
+      // De originele IC2 (avr_versie "org") geeft de dipswitch niet door.
+      if (!${dip_bekend}) return std::string("Niet uit te lezen (originele IC2)");
       return id(otlink)->get_front_switch() ? std::string("OpenTherm-ketel")
                                             : std::string("Aan/uit-ketel");
     update_interval: 10s

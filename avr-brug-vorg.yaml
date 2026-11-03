@@ -1,0 +1,74 @@
+# Originele IC2 (Haddon T1.1, ATmega8) in de IC2-voet: geen eigen AVR-firmware nodig, component aurea_link_org.
+# Wordt geladen door aurea-wp.yaml via `avr_versie: "org"`. Niet los compileren.
+#
+# STATUS: nog niet op een echte IC2 gedraaid. Het frame is afgeleid uit de originele firmware en een emulator
+# (reverse-engineering/analyse-volledig/RAPPORT.md 3.3). Begin met alleen luisteren: zet bovenin aurea-wp.yaml
+#   substitutions:
+#     org_alleen_luisteren: "true"
+# en kijk in de log of "IC2 -> ESP"-regels met een kloppende som verschijnen. Pas dan op "false".
+#
+# Wat deze variant NIET kan (de originele IC2 geeft het niet door): kamertemperatuur van de thermostaat, ketelgegevens
+# (aanvoer, retour, druk, modulatie, vlam, storing), buitentemperatuur naar de thermostaat, een eigen ketelsetpoint voor
+# bijstook (de IC2 schrijft zelf 10 graden), CV uitzetten, maximale modulatie. Die entiteiten tonen "onbekend".
+# Wat wel kan: het ketelsetpoint en kamersetpoint van de thermostaat lezen en de warmtepomp aan de thermostaat tonen.
+# De "rem" is hier alles of niets: aan = de IC2 houdt de ketel tegen, uit = hij geeft de ketel vrij.
+#
+# Op de print: dipswitch 2 op ON (= OpenTherm-ketel). De ESP32 zit in de IC1-voet, de originele ATmega8 in de IC2-voet.
+
+substitutions:
+  ot_ns: esphome::aurea_link_org
+  avr_verwacht: "Originele IC2 (Haddon T1.1, ATmega8) in de IC2-voet, geen eigen firmware"
+  # De IC2 meldt niet of er een thermostaat meepraat; zolang hij frames stuurt nemen we aan van wel.
+  thermo_ok: "id(otlink)->get_thermostat_ok()"
+  # De dipswitch (PC2) is hier niet uit te lezen.
+  dip_bekend: "false"
+  # Overschrijfbaar vanuit aurea-wp.yaml.
+  org_alleen_luisteren: "false"
+
+uart:
+  # ───────────────────────────────────────────────────────────────
+  #  Link naar de originele IC2. Dezelfde bedrading als bij v1 en v2:
+  #    GPIO19 <- IC1-socket pin 2, via 4k7 in serie + 10k naar GND
+  #    GPIO18 -> IC1-socket pin 3, rechtstreeks
+  #
+  #  9615 baud (UBRR 103 met U2X bij 8 MHz), 8 databits, 2 stopbits, geen pariteit, zoals het origineel.
+  # ───────────────────────────────────────────────────────────────
+  - id: avr_uart
+    rx_pin: GPIO19
+    tx_pin: GPIO18
+    baud_rate: 9615
+    data_bits: 8
+    stop_bits: 2
+    parity: NONE
+
+aurea_link_org:
+  id: otlink
+  uart_id: avr_uart
+  update_interval: 2s
+  alleen_luisteren: ${org_alleen_luisteren}
+
+binary_sensor:
+  # Geeft de IC2 onze bytes terug (idx 5..10 van zijn frame)? Dan werkt de richting ESP32 -> IC2.
+  # Onbekend zolang we nog niets verstuurd hebben (ook in de luistermodus).
+  - platform: template
+    name: "IC2 echo klopt"
+    lambda: 'return id(otlink)->get_echo_ok();'
+    device_class: connectivity
+    entity_category: diagnostic
+    icon: mdi:swap-horizontal
+    web_server:
+      sorting_group_id: grp_diag
+      sorting_weight: 8
+
+sensor:
+  - platform: template
+    name: "IC2-frames ontvangen"
+    lambda: 'return (float) id(otlink)->get_frames();'
+    update_interval: 30s
+    accuracy_decimals: 0
+    state_class: total_increasing
+    entity_category: diagnostic
+    icon: mdi:counter
+    web_server:
+      sorting_group_id: grp_diag
+      sorting_weight: 9

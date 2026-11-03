@@ -24,7 +24,7 @@ telegrammen CRC-geldig, en de buitenunit reageert op de gestuurde stand.
 
 ---
 
-## Welke AVR-brug heb je? (v1 of v2)
+## Welke AVR-brug heb je? (v1, v2 of de originele IC2)
 
 Zit er een ATmega328P-brug in IC2, dan zijn er twee versies. Ze praten een ander protocol met de ESP32, dus de
 firmware van de AVR en de yaml moeten bij elkaar passen:
@@ -42,11 +42,20 @@ herstructurering (keuze via `avr_versie`) niet op hardware gedraaid; ging het bi
 de tag `voor-v2`. AVR v2 draait sinds 26-10-2026 op één opstelling (OpenTherm-ketel, Remeha iSense); op andere ketels
 en thermostaten is hij nog niet getest.
 
-**Bovenin `aurea-wp.yaml` staat `avr_versie`.** Zet die op `"1"` of `"2"`, naar de AVR die je hebt gebrand. Laat je
-hem staan, dan compileert het bestand niet (de foutmelding noemt `avr-brug-vKIES_1_OF_2...`): je moet dus bewust kiezen.
+**Bovenin `aurea-wp.yaml` staat `avr_versie`.** Zet die op `"1"` of `"2"`, naar de AVR die je hebt gebrand, of op `"org"` als je
+de originele IC2 laat zitten (zie hieronder). Laat je hem staan, dan compileert het bestand niet (de foutmelding noemt
+`avr-brug-vKIES_1_2_OF_ORG...`): je moet dus bewust kiezen.
 Kies je de verkeerde versie, dan praten ESP32 en AVR niet met elkaar: *Brug verbonden* blijft uit en de warmtepomp
 doet niet mee, terwijl de ketel de thermostaat blijft volgen (de brug valt terug; bij v2 na enkele minuten). Welke versie in de ESP32 verwacht wordt, zie je terug onder **Diagnose**
 (*AVR-versie (verwacht)*; bij v2 ook *AVR-versie (gemeld)*). Meer over v2: [docs/avr-v2.md](docs/avr-v2.md).
+
+### Geen AVR kunnen programmeren? `avr_versie: "org"` (experimenteel)
+
+De originele ATmega8 (Haddon T1.1) kan gewoon in de IC2-voet blijven. Hij doet zelf het OpenTherm-gesprek met thermostaat en
+ketel; de ESP32 praat met hem over de 9615-baud-link die al op de print ligt en speelt de rol van de originele IC1. Je hoeft
+dan niets te branden. De prijs: de IC2 geeft veel minder door (geen kamertemperatuur, geen ketelgegevens, geen
+buitentemperatuur naar de thermostaat, de ketelrem is alles-of-niets) en deze variant is **nog niet op een echte IC2
+geprobeerd**. Begin met `org_alleen_luisteren: "true"`. Alles staat in [docs/ic2-origineel.md](docs/ic2-origineel.md).
 
 ## De IC2-kant is optioneel
 

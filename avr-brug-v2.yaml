@@ -6,6 +6,8 @@
 substitutions:
   ot_ns: esphome::aurea_link2
   avr_verwacht: "AVR-brug v2, firmware 2.0.0 of nieuwer (firmware/avr-bridge-v2/avr-bridge-v2.hex)"
+  # De AVR meldt de dipswitch (PC2); aurea-wp.yaml toont hem bij "Keteltype (dipswitch)".
+  dip_bekend: "true"
   # Is er een thermostaat? Het bit dat de AVR zelf meldt (LINK_STAT_ALIVE).
   thermo_ok: "id(otlink)->get_thermostat_ok()"
 
