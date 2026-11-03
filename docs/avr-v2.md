@@ -1,6 +1,6 @@
 # AVR-brug v2
 
-**Status: draait in de praktijk (Remeha iSense, Honeywell Chronotherm). Begin op de bank met de ketel geblokkeerd.**
+**Status: draait sinds 26-10-2026 op één opstelling (OpenTherm-ketel, Remeha iSense): 0 gemiste berichten, 0 herstarts van de brug. Andere ketels en thermostaten zijn nog niet getest. Begin op de bank met de ketel geblokkeerd.**
 Kies de versie met `avr_versie` bovenin `aurea-wp.yaml`; de yaml en de AVR-firmware moeten dezelfde versie zijn.
 
 Een nieuwe versie van de ATmega328P-brug (firmware/avr-bridge-v2) met een nieuw protocol tussen de ESP32 en de AVR,
@@ -13,8 +13,8 @@ en het bijbehorende ESPHome-component `aurea_link2`. De huidige brug (firmware/a
   herstart opnieuw naar de AVR stuurt. In ESPHome: `onderscheppen:` en de trigger `on_vraag`.
 - **Veilige opstart:** geremd, CH-vlag onderdrukt, de noodbrug pas na 240 s zonder ESP32 (v1: direct).
 - De AVR meldt zijn **softwareversie** (HELLO).
-- **TX-polariteit** naar de thermostaat is vanuit de ESP32 omkeerbaar (runtime-vlag). Een Honeywell Chronotherm Touch werkt
-  alleen met de polariteit van het origineel (PD4 rust hoog); Anna en Remeha werkten met de oude. Het kiest de polariteit zelf
+- **TX-polariteit** naar de thermostaat is vanuit de ESP32 omkeerbaar (runtime-vlag). De Honeywell Chronotherm Touch werkt
+  (met de polariteit van het origineel, PD4 rust hoog); de Remeha iSense werkt ook. Anna werkte met de oude polariteit. Het kiest de polariteit zelf
   (*TX-polariteit automatisch* in `avr-brug-v2.yaml`); handmatig kan met *TX-polariteit thermostaat omkeren*.
 
 ## Niet compatibel met v1

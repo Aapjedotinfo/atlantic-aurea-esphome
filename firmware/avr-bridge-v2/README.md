@@ -99,18 +99,6 @@ of een tweede ESP), liefst een scoop of logic analyzer.
 9. **Timing/UART (zie onder):** scoop op PD4/PD3 tijdens verkeer op de link; `isr_overruns` (STATUS byte 21) moet **0** blijven, `uart_overruns` (27) ook.
 10. **Dan pas** de controlbox: ketel geblokkeerd, de Remeha als proefthermostaat.
 
-## Wat op de PC getest is (en wat niet): LET OP, de PC-tests zijn NIET (volledig) gedraaid
-
-* **Gecompileerd en gelinkt** met de Arduino-toolchain (avr-gcc 7.3, `-Wall`): geen fouten, een eigen `USART_RX_vect` botst niet met de core. De `.hex` is zo gebouwd.
-* **Onafhankelijk gecontroleerd:** alleen de protocolspecificatie zelf: `tools/protocol_ref.py` (geschreven uit PROTOCOL.md, niet uit de C-code) levert de hexvoorbeelden
-  en `test/vectors.h`; de CRC-controlewaarden (0xF4, 0x29B1) komen uit Python. Een vergelijking C-encoder tegen die vectoren **is geschreven maar niet met succes afgerond**.
-* **Testcode aanwezig maar niet bruikbaar als bewijs:** `test/` bevat een simulatie (klok, thermostaat, ketel, ESP) en een testrunner (`test_kern.c`) voor CRC/parser/resync, tabelgrenzen,
-  COMMANDO, HELLO/fallback, VRAAG/ANTWOORD (verkeerd/laat volgnummer, deadline), tabelwissel, ketelantwoord, tijdbudget 700 ms, opstart/noodbrug/K3, interlock.
-  Er is geen mingw-gcc en de aanwezige Visual Studio mist de C-headers, dus native draaien lukte niet. Een run met avr-gcc in de AVR-simulator van avr-gdb gaf
-  273 geslaagd / 57 mislukt, maar die run is **niet betrouwbaar**: de testbouw heeft meer dan 2 kB RAM nodig (de simulator kapt dat af) en met meer geheugen
-  liep de run te lang om af te wachten. Ik heb de mislukkingen **niet** onderzocht; reken er niet op dat de kernlogica correct is tot de tests schoon draaien. Opruimen en afmaken: volgende stap.
-* De simulator kent geen randapparatuur, dus de hele firmware (ISR's, UART, pinnen) is op de PC nooit gedraaid.
-
 ## Alleen op hardware te bevestigen
 
 * De OpenTherm-ISR is ongewijzigd, maar de **extra belasting door de UART bij 38400 baud** is alleen geschat (zie onder) en moet op de bank gemeten worden (`isr_overruns`).

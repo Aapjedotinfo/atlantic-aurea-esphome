@@ -36,6 +36,12 @@ firmware van de AVR en de yaml moeten bij elkaar passen:
 | Component | `aurea_link` | `aurea_link2` |
 | Extra | | regeltabel per Data-ID, **buitentemperatuur naar de thermostaat (werkt alleen vanaf AVR v2)**, automatische TX-polariteit, versie in Diagnose |
 
+**Nieuwe bouwers: kies v2.** v1 blijft werken voor bestaande opstellingen, maar krijgt geen nieuwe functies meer (de
+buitentemperatuur naar de thermostaat werkt alleen met v2). De v1-variant van deze yaml compileert, maar is na de
+herstructurering (keuze via `avr_versie`) niet op hardware gedraaid; ging het bij jou mis, dan staat de vorige stand op
+de tag `voor-v2`. AVR v2 draait sinds 26-10-2026 op één opstelling (OpenTherm-ketel, Remeha iSense); op andere ketels
+en thermostaten is hij nog niet getest.
+
 **Bovenin `aurea-wp.yaml` staat `avr_versie`.** Zet die op `"1"` of `"2"`, naar de AVR die je hebt gebrand. Laat je
 hem staan, dan compileert het bestand niet (de foutmelding noemt `avr-brug-vKIES_1_OF_2...`): je moet dus bewust kiezen.
 Kies je de verkeerde versie, dan praten ESP32 en AVR niet met elkaar: *Brug verbonden* blijft uit en de warmtepomp
