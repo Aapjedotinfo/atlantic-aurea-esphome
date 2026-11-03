@@ -24,6 +24,24 @@ telegrammen CRC-geldig, en de buitenunit reageert op de gestuurde stand.
 
 ---
 
+## Welke AVR-brug heb je? (v1 of v2)
+
+Zit er een ATmega328P-brug in IC2, dan zijn er twee versies. Ze praten een ander protocol met de ESP32, dus de
+firmware van de AVR en de yaml moeten bij elkaar passen:
+
+| | AVR-brug **v1** | AVR-brug **v2** |
+|---|---|---|
+| Firmware | `firmware/avr-bridge/avr-bridge.hex` | `firmware/avr-bridge-v2/avr-bridge-v2.hex` |
+| Link naar de ESP32 | 9600 baud | 38400 baud met CRC |
+| Component | `aurea_link` | `aurea_link2` |
+| Extra | | regeltabel per Data-ID, **buitentemperatuur naar de thermostaat (werkt alleen vanaf AVR v2)**, automatische TX-polariteit, versie in Diagnose |
+
+**Bovenin `aurea-wp.yaml` staat `avr_versie`.** Zet die op `"1"` of `"2"`, naar de AVR die je hebt gebrand. Laat je
+hem staan, dan compileert het bestand niet (de foutmelding noemt `avr-brug-vKIES_1_OF_2...`): je moet dus bewust kiezen.
+Kies je de verkeerde versie, dan praten ESP32 en AVR niet met elkaar: *Brug verbonden* blijft uit en de warmtepomp
+doet niet mee, terwijl de ketel de thermostaat blijft volgen (de brug valt terug; bij v2 na enkele minuten). Welke versie in de ESP32 verwacht wordt, zie je terug onder **Diagnose**
+(*AVR-versie (verwacht)*; bij v2 ook *AVR-versie (gemeld)*). Meer over v2: [docs/avr-v2.md](docs/avr-v2.md).
+
 ## De IC2-kant is optioneel
 
 `aurea-wp.yaml` is de volledige opzet. Wil je alleen de warmtepomp en laat je de
@@ -450,16 +468,21 @@ KiCad-bestanden zijn er niet; teken ze gerust zelf na.
 ```
 aurea-wp-666/
 ├── aurea-wp.yaml                    volledige opzet: warmtepomp + brug
+├── avr-brug-v1.yaml                 het stuk van aurea-wp.yaml dat bij AVR v1 hoort (wordt automatisch geladen)
+├── avr-brug-v2.yaml                 idem voor AVR v2
 ├── aurea-wp-minimaal.yaml.example   alleen de warmtepomp, IC2-voet leeg
 ├── secrets.yaml.example    kopieer naar secrets.yaml en vul in
 ├── WIRING.md               bedrading + ASCII-schema
 ├── components/
 │   ├── chofu_wp/           666-baud protocol + regeling (warmtepomp)
-│   └── aurea_link/         9600-baud link naar de brug in IC2
+│   ├── aurea_link/         9600-baud link naar de brug in IC2 (AVR v1)
+│   └── aurea_link2/        38400-baud link naar de brug in IC2 (AVR v2)
 ├── firmware/
-│   └── avr-bridge/         de OpenTherm-brug: bron + kant-en-klare .hex
+│   ├── avr-bridge/         de OpenTherm-brug v1: bron + kant-en-klare .hex
+│   └── avr-bridge-v2/      de OpenTherm-brug v2: bron + kant-en-klare .hex
 └── docs/
     ├── volledige-controlbox.md   het ontwerp van de tweechip-opzet
+    ├── avr-v2.md                 de AVR-brug v2
     ├── print-doormeten.md        werklijst voor de meter
     └── meetresultaten-ic2.md     wat er daadwerkelijk gemeten is
 ```
@@ -480,6 +503,8 @@ cp secrets.yaml.example secrets.yaml   # wifi + api-sleutel invullen
 esphome run aurea-wp.yaml              # eerste keer via USB, daarna OTA
 ```
 
+Zet eerst `avr_versie` bovenin `aurea-wp.yaml` op `"1"` of `"2"` (zie *Welke AVR-brug heb je?*), anders compileert het bestand niet.
+
 Nog geen chip in de IC2-voet? Kopieer dan eerst
 `aurea-wp-minimaal.yaml.example` over `aurea-wp.yaml` heen.
 
@@ -493,7 +518,7 @@ repo gehaald, dus alles kan in de webinterface.
    [`aurea-wp.yaml`](aurea-wp.yaml) &mdash; of van
    [`aurea-wp-minimaal.yaml.example`](aurea-wp-minimaal.yaml.example) als je
    de IC2-voet leeg laat. Wissel daarin het
-   `external_components`-blok voor:
+   `external_components`-blok en het `packages`-blok voor:
 
    ```yaml
    external_components:
@@ -501,10 +526,17 @@ repo gehaald, dus alles kan in de webinterface.
          type: git
          url: https://github.com/Aapjedotinfo/atlantic-aurea-esphome
          ref: main
-       components: [chofu_wp, aurea_link]
+       components: [chofu_wp, aurea_link, aurea_link2]
+
+   packages:
+     avr_brug:
+       url: https://github.com/Aapjedotinfo/atlantic-aurea-esphome
+       ref: main
+       files: [avr-brug-v${avr_versie}.yaml]
    ```
 
-   Bij de minimale opzet mag `aurea_link` uit die lijst.
+   Zet ook `avr_versie` bovenin op `"1"` of `"2"` (zie *Welke AVR-brug heb je?*).
+   Bij de minimale opzet mogen `aurea_link`, `aurea_link2` en het `packages`-blok weg.
 
 3. Menu rechtsboven → **Secrets** → `wifi_ssid`, `wifi_password`,
    `fallback_password` en `api_encryption` toevoegen.

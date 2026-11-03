@@ -1,0 +1,47 @@
+# AVR-brug v1: firmware/avr-bridge/avr-bridge.hex, link van 9600 baud, component aurea_link.
+# Wordt geladen door aurea-wp.yaml via `avr_versie: "1"`. Niet los compileren.
+
+substitutions:
+  ot_ns: aurea_link
+  avr_verwacht: "AVR-brug v1 (firmware/avr-bridge/avr-bridge.hex)"
+  # Is er een thermostaat? Aan als de AVR dat meldt, of als er in de laatste 10 s een bericht van de thermostaat
+  # (Data-ID 0) binnenkwam.
+  thermo_ok: "id(otlink)->get_thermostat_ok() || ([&]() { const int a = id(otlink)->get_ot_age(0, ${ot_ns}::OT_FROM_STAT); return a >= 0 && a <= 10; })()"
+
+uart:
+  # ───────────────────────────────────────────────────────────────
+  #  Parameterlink naar de eigen ATmega328P in de IC2-socket, die het
+  #  OpenTherm-gesprek tussen thermostaat en CV-ketel doorgeeft.
+  #
+  #  De sporen tussen IC1 en IC2 liggen al op de print, dus dit kost
+  #  geen extra bedrading:
+  #    GPIO19 <- IC1-socket pin 2, via 4k7 in serie + 10k naar GND
+  #    GPIO18 -> IC1-socket pin 3, rechtstreeks
+  #
+  #  9600 baud: het origineel zette UBRR = 103 met U2X, oftewel 9615
+  #  baud bij 8 MHz. Het zendt met 2 stopbits, maar een ontvanger kijkt
+  #  alleen naar de eerste, dus 8N1 volstaat hier.
+  # ───────────────────────────────────────────────────────────────
+  - id: avr_uart
+    rx_pin: GPIO19
+    tx_pin: GPIO18
+    baud_rate: 9600
+
+# De brug naar de thermostaat en de CV-ketel. Alle regellogica zit hier;
+# de AVR kent alleen de twee substituties en zijn terugvalgedrag.
+aurea_link:
+  id: otlink
+  uart_id: avr_uart
+  update_interval: 2s
+  brake_setpoint: 10   # ketelsetpoint bij geblokkeerde bijstook; Atlantic's waarde
+
+# Buitentemperatuur van de warmtepomp aan de thermostaat doorgeven (Data-ID 27): WERKT ALLEEN VANAF AVR v2.
+# Bij v1 kon dit wel (override_to_thermostat), maar zonder uit te zetten: de AVR bewaart zijn antwoord tot de stroom eraf
+# gaat. Daarom hier uitgeschakeld. Heb je AVR v2, kies dan avr_versie "2".
+#
+# interval:
+#   - interval: 60s
+#     then:
+#       - lambda: |-
+#           const float buiten = id(wp)->get_outside();
+#           if (!std::isnan(buiten)) id(otlink)->override_to_thermostat(27, buiten);

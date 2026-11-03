@@ -1,0 +1,195 @@
+# AVR-brug v2: firmware/avr-bridge-v2/avr-bridge-v2.hex, link van 38400 baud, component aurea_link2.
+# Wordt geladen door aurea-wp.yaml via `avr_versie: "2"`. Niet los compileren.
+# Een v2-AVR praat niet met een v1-yaml en andersom: brand de AVR met de hex die hierboven staat (fuses lfuse 0xFF,
+# hfuse 0xD9, efuse 0xFD) en kies dezelfde versie in aurea-wp.yaml.
+
+substitutions:
+  ot_ns: esphome::aurea_link2
+  avr_verwacht: "AVR-brug v2, firmware 2.0.0 of nieuwer (firmware/avr-bridge-v2/avr-bridge-v2.hex)"
+  # Is er een thermostaat? Het bit dat de AVR zelf meldt (LINK_STAT_ALIVE).
+  thermo_ok: "id(otlink)->get_thermostat_ok()"
+
+uart:
+  # ───────────────────────────────────────────────────────────────
+  #  Parameterlink naar de eigen ATmega328P in de IC2-socket, die het
+  #  OpenTherm-gesprek tussen thermostaat en CV-ketel doorgeeft.
+  #
+  #  De sporen tussen IC1 en IC2 liggen al op de print, dus dit kost
+  #  geen extra bedrading:
+  #    GPIO19 <- IC1-socket pin 2, via 4k7 in serie + 10k naar GND
+  #    GPIO18 -> IC1-socket pin 3, rechtstreeks
+  #
+  #  38400 baud, 8N1, eigen berichtformaat met CRC (zie firmware/avr-bridge-v2/PROTOCOL.md).
+  # ───────────────────────────────────────────────────────────────
+  - id: avr_uart
+    rx_pin: GPIO19
+    tx_pin: GPIO18
+    baud_rate: 38400
+
+# De brug naar de thermostaat en de CV-ketel. Alle regellogica zit hier;
+# de AVR kent de regeltabel die wij hem sturen en zijn terugvalgedrag.
+aurea_link2:
+  id: otlink
+  uart_id: avr_uart
+  update_interval: 2s
+  brake_setpoint: 10   # ketelsetpoint bij geblokkeerde bijstook; Atlantic's waarde
+  standaardregels: true   # de 10 standaardregels van de AVR (o.a. de rem op ID 1, CH-vlag, ID 16); zonder dit komt er een lege tabel
+  minimale_versie: "2.0.0"   # AVR-firmware die deze yaml verwacht
+  avr_versie:
+    name: "AVR-versie (gemeld)"
+    entity_category: diagnostic
+    web_server:
+      sorting_group_id: grp_diag
+      sorting_weight: 2
+  avr_melding:
+    name: "AVR-melding"
+    entity_category: diagnostic
+    web_server:
+      sorting_group_id: grp_diag
+      sorting_weight: 3
+  # Buitentemperatuur van de warmtepomp aan de thermostaat (Data-ID 27), aan/uit met de schakelaar
+  # "Buitentemperatuur aan thermostaat". De ketel kent die ID vaak niet (antwoordt "onbekend") en een klaargezet antwoord
+  # wordt alleen op een geldig ketelantwoord toegepast. Daarom houdt de AVR het antwoord vast (vraag) en vervangen wij het
+  # door een READ-ACK met onze waarde (zie on_vraag). Lukt dat niet in de deadline, dan gaat het ketelantwoord ongewijzigd door.
+  onderscheppen:
+    - id: 27
+      richting: "K>T"
+      modus: vraag
+      naam: buiten_naar_thermostaat
+      standaard: doorgeven
+      actief: false          # de schakelaar zet hem aan
+  on_vraag:
+    - data_id: 27
+      richting: "K>T"
+      then:
+        - lambda: |-
+            const float buiten = id(wp)->get_outside();
+            if (std::isnan(buiten)) {
+              id(otlink)->antwoord_doorgeven();
+            } else {
+              id(otlink)->antwoord_vervangen_frame(
+                  esphome::aurea_link2::override_frame(27, (uint16_t) (int16_t) lroundf(buiten * 256.0f)));
+            }
+
+globals:
+  # Automatische keuze van de TX-polariteit naar de thermostaat (zie "TX-polariteit automatisch"): -1 = nog niet bepaald,
+  # 0 = uit, 1 = aan. Blijft bewaard na een herstart.
+  - id: g_pol_gekozen
+    type: int
+    restore_value: true
+    initial_value: '-1'
+  - id: g_pol_zoek
+    type: bool
+    restore_value: false
+    initial_value: 'true'
+  - id: g_pol_poging
+    type: int
+    restore_value: false
+    initial_value: '0'
+  - id: g_pol_t0
+    type: uint32_t
+    restore_value: false
+    initial_value: '0'
+
+interval:
+  # Automatische keuze van de TX-polariteit (zie "TX-polariteit automatisch").
+  - interval: 5s
+    then:
+      - lambda: |-
+          if (!id(sw_pol_auto)->state) return;
+          static bool init = false;
+          if (!init) { init = true; if (id(g_pol_gekozen) >= 0) id(g_pol_zoek) = false; }
+          const bool nu = id(sw_tx_inv_test)->state;
+          if (!id(g_pol_zoek)) {                       // keuze bekend: toepassen
+            if (millis() < 15000) return;
+            const bool gewenst = id(g_pol_gekozen) != 0;
+            if (nu != gewenst) { if (gewenst) id(sw_tx_inv_test)->turn_on(); else id(sw_tx_inv_test)->turn_off(); }
+            return;
+          }
+          if (millis() < 60000) return;                // zoeken: pas na de opstart
+          const int ids = id(otlink)->get_ot_ids_seen();
+          if (!id(otlink)->get_thermostat_ok()) { id(g_pol_t0) = 0; return; }
+          if (id(g_pol_t0) == 0) { id(g_pol_t0) = millis(); return; }
+          if (millis() - id(g_pol_t0) < 45000) return;
+          const int delta = ids;                       // totaal aantal verschillende (richting, ID) sinds de opstart
+          if (delta >= 25) {                           // de thermostaat loopt door (vastgelopen: ongeveer 4 tot 10)
+            id(g_pol_gekozen) = nu ? 1 : 0;
+            id(g_pol_zoek) = false;
+            ESP_LOGI("polariteit", "Thermostaat loopt door (%d ID's gezien): polariteit %s bewaard", delta, nu ? "aan" : "uit");
+            return;
+          }
+          if (id(g_pol_poging) >= 4) {                 // niets werkt: standaard aan houden
+            id(g_pol_gekozen) = 1;
+            id(g_pol_zoek) = false;
+            if (!nu) id(sw_tx_inv_test)->turn_on();
+            ESP_LOGW("polariteit", "Geen polariteit liet de thermostaat doorlopen: standaard aan");
+            return;
+          }
+          id(g_pol_poging)++;
+          ESP_LOGW("polariteit", "Thermostaat loopt vast (%d ID's gezien): polariteit omgedraaid (poging %d)", delta, id(g_pol_poging));
+          if (nu) id(sw_tx_inv_test)->turn_off(); else id(sw_tx_inv_test)->turn_on();
+          id(g_pol_t0) = 0;
+
+switch:
+  # Buitentemperatuur van de warmtepomp aan de thermostaat doorgeven (Data-ID 27). Standaard uit.
+  - platform: template
+    name: "Buitentemperatuur aan thermostaat"
+    id: sw_buiten_thermo
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_OFF
+    entity_category: config
+    icon: mdi:thermometer-lines
+    turn_on_action:
+      - lambda: 'id(otlink)->set_regel_actief("buiten_naar_thermostaat", true);'
+    turn_off_action:
+      - lambda: 'id(otlink)->set_regel_actief("buiten_naar_thermostaat", false);'
+    web_server:
+      sorting_group_id: grp_instellingen
+      sorting_weight: 90
+
+  # TX-polariteit automatisch: de ESP probeert de polariteit en kijkt of de thermostaat DOORLOOPT (minstens 25 verschillende
+  # Data-ID's sinds de opstart). Een thermostaat die op de verkeerde polariteit zit, blijft steeds dezelfde ID herhalen. Hij wisselt
+  # maximaal 4 keer, houdt daarna de standaard (aan) en bewaart de goede keuze na een herstart. Uit = de handschakelaar hieronder.
+  - platform: template
+    name: "TX-polariteit automatisch"
+    id: sw_pol_auto
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_ON
+    entity_category: config
+    icon: mdi:auto-fix
+
+  # TX-polariteit thermostaat omkeren (26-10-2026): de AVR-v2 stuurt PD4 vast met TX_INVERT_STAT=1; deze runtime-vlag draait dat
+  # netto terug naar 0, zoals het origineel (PD4 rust hoog). De Honeywell Chronotherm Touch werkt alleen zo. Staat standaard AAN
+  # na elke herstart. (Een Anna of iSense werkte met de oude polariteit; zet hem dan uit.)
+  - platform: template
+    name: "TX-polariteit thermostaat omkeren"
+    id: sw_tx_inv_test
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_ON
+    entity_category: config
+    icon: mdi:swap-vertical
+    turn_on_action:
+      - lambda: 'id(otlink)->set_invert_tx_stat(true);'
+    turn_off_action:
+      - lambda: 'id(otlink)->set_invert_tx_stat(false);'
+
+button:
+  - platform: template
+    name: "TX-polariteit opnieuw bepalen"
+    entity_category: config
+    icon: mdi:refresh
+    on_press:
+      - lambda: |-
+          id(g_pol_gekozen) = -1;
+          id(g_pol_zoek) = true;
+          id(g_pol_poging) = 0;
+          id(g_pol_t0) = 0;
+
+sensor:
+  - platform: template
+    name: "TX-polariteit gekozen"
+    lambda: 'return (float) id(g_pol_gekozen);'
+    update_interval: 30s
+    accuracy_decimals: 0
+    entity_category: diagnostic
+    icon: mdi:swap-vertical
