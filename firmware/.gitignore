@@ -4,3 +4,4 @@
 *.hex
 *.elf
 !avr-bridge/avr-bridge.hex
+!avr-bridge-v2/avr-bridge-v2.hex
