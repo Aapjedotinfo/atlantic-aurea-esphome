@@ -2,18 +2,18 @@
 
 Alternatieve besturing voor de **Atlantic Aurea 5 Hybrid** warmtepomp (een
 kostenbespaarde **Chofu AEYC-0643XU**). In de controlbox zitten twee ATmega8's in
-een DIP28-voet. **Dit project vervangt ze allebei**:
+een DIP28-voet. **IC1 vervang je altijd door een ESP32; wat je in IC2 zet, bepaalt hoe ver
+je komt met thermostaat en CV-ketel** (zie *Kies je opzet*):
 
 | Voet | Origineel | Wordt | Doet |
 |---|---|---|---|
 | **IC1** | Haddon M1.1 | **ESP32** (MH-ET MiniKit) | praat op 666 baud met de buitenunit, draait de regeling, praat met Home Assistant |
-| **IC2** | Haddon T1.1 | **ATmega328P** met eigen firmware | geeft het OpenTherm-gesprek tussen thermostaat en CV-ketel door, en mag onderweg ingrijpen |
+| **IC2** | Haddon T1.1 | naar keuze: leeg, de originele chip, of een **ATmega328P** met eigen firmware | het OpenTherm-gesprek tussen thermostaat en CV-ketel |
 
 Je zegt vanuit Home Assistant *"geef me X °C aanvoer"* en de controller kiest zelf
-de stand. De CV-ketel hoeft daarnaast niet meer los aangestuurd te worden: de
-brug in IC2 zit tussen je thermostaat en je ketel in, dus je kunt de ketel
-**blokkeren** zolang de warmtepomp het alleen aankan — zonder de thermostaat te
-misleiden en zonder draden te verleggen.
+de stand. Met een chip in IC2 zit de controlbox tussen je thermostaat en je ketel in,
+dus kun je de ketel **blokkeren** zolang de warmtepomp het alleen aankan — zonder de
+thermostaat te misleiden en zonder draden te verleggen.
 
 **Status: werkend op echte hardware.** Beide kanten van de OpenTherm-brug
 decoderen frames zonder pariteitsfouten, met een echte thermostaat aan de ene
@@ -24,40 +24,48 @@ telegrammen CRC-geldig, en de buitenunit reageert op de gestuurde stand.
 
 ---
 
-## Welke AVR-brug heb je? (v1, v2 of de originele IC2)
+## Kies je opzet: wat doe je in IC1 en IC2?
 
-Zit er een ATmega328P-brug in IC2, dan zijn er twee versies. Ze praten een ander protocol met de ESP32, dus de
-firmware van de AVR en de yaml moeten bij elkaar passen:
+**IC1 krijgt altijd de ESP32.** Die doet de warmtepomp: stand, stooklijn, kamertemperatuur, Home Assistant. Voor het
+OpenTherm-gesprek tussen thermostaat en CV-ketel loopt er een link tussen IC1 en IC2, en daar zit de keuze. De regel is:
+**hoe meer van dat gesprek jij in handen hebt, hoe meer je ziet en kunt sturen.** De originele IC2 voert het gesprek zelf en
+geeft alleen twee setpoints door; een eigen AVR geeft elk frame door aan de ESP32.
 
-| | AVR-brug **v1** | AVR-brug **v2** |
-|---|---|---|
-| Firmware | `firmware/avr-bridge/avr-bridge.hex` | `firmware/avr-bridge-v2/avr-bridge-v2.hex` |
-| Link naar de ESP32 | 9600 baud | 38400 baud met CRC |
-| Component | `aurea_link` | `aurea_link2` |
-| Extra | | regeltabel per Data-ID, **buitentemperatuur naar de thermostaat (werkt alleen vanaf AVR v2)**, automatische TX-polariteit, versie in Diagnose |
+| | 1. Minimaal | 2. Originele IC2 (`org`) | 3. Eigen AVR **v1** | 4. Eigen AVR **v2** |
+|---|---|---|---|---|
+| In de IC2-voet | leeg | de originele ATmega8 | ATmega328P, eigen firmware | ATmega328P, eigen firmware |
+| Zelf een chip branden | nee | **nee** | ja | ja |
+| `avr_versie` in de yaml | (minimaal-voorbeeld) | `"org"` | `"1"` | `"2"` |
+| Warmtepomp, stooklijn, kamerregeling | ✅ | ✅ | ✅ | ✅ |
+| Kamertemperatuur van de thermostaat | — (via HA of HTTP) | — (via HA of HTTP) | ✅ | ✅ |
+| Gewenste kamertemperatuur en ketelsetpoint van de thermostaat | — | ✅ | ✅ | ✅ |
+| Ketelgegevens (aanvoer, retour, druk, modulatie, vlam, storing) | — | — | ✅ | ✅ |
+| Elk OpenTherm-Data-ID zien | — | — | ✅ | ✅ |
+| Ketel tegenhouden zolang de warmtepomp het aankan | — (ketel los) | alles of niets | ✅ met instelbaar setpoint | ✅ met instelbaar setpoint |
+| Bijstook op een gekozen ketelsetpoint | — | — | ✅ | ✅ |
+| Warmtepomptemperaturen aan de thermostaat tonen | — | ✅ | ✅ | ✅ |
+| Buitentemperatuur aan de thermostaat | — | — | — | ✅ |
+| Noodbrug als de ESP32 wegvalt | — | ✅ (240 s) | ✅ | ✅ |
+| Extra bedrading | alleen GPIO16/17 | + deler op GPIO19 | + deler op GPIO19 | + deler op GPIO19 |
+| Terug naar fabrieksstaat | origineel in IC2 | origineel blijft zitten | origineel bewaren | origineel bewaren |
+| Getest op echte hardware | ✅ (warmtepomp) | ❌ nog niet | v1 eerder wel; na de herstructurering niet | ✅ één opstelling (26-10-2026) |
 
-**Nieuwe bouwers: kies v2.** v1 blijft werken voor bestaande opstellingen, maar krijgt geen nieuwe functies meer (de
-buitentemperatuur naar de thermostaat werkt alleen met v2). De v1-variant van deze yaml compileert, maar is na de
-herstructurering (keuze via `avr_versie`) niet op hardware gedraaid; ging het bij jou mis, dan staat de vorige stand op
-de tag `voor-v2`. AVR v2 draait sinds 26-10-2026 op één opstelling (OpenTherm-ketel, Remeha iSense); op andere ketels
-en thermostaten is hij nog niet getest.
+**Welke kies je?**
 
-**Bovenin `aurea-wp.yaml` staat `avr_versie`.** Zet die op `"1"` of `"2"`, naar de AVR die je hebt gebrand, of op `"org"` als je
-de originele IC2 laat zitten (zie hieronder). Laat je hem staan, dan compileert het bestand niet (de foutmelding noemt
-`avr-brug-vKIES_1_2_OF_ORG...`): je moet dus bewust kiezen.
-Kies je de verkeerde versie, dan praten ESP32 en AVR niet met elkaar: *Brug verbonden* blijft uit en de warmtepomp
-doet niet mee, terwijl de ketel de thermostaat blijft volgen (de brug valt terug; bij v2 na enkele minuten). Welke versie in de ESP32 verwacht wordt, zie je terug onder **Diagnose**
-(*AVR-versie (verwacht)*; bij v2 ook *AVR-versie (gemeld)*). Meer over v2: [docs/avr-v2.md](docs/avr-v2.md).
+- *Alleen de warmtepomp in Home Assistant, ketel en thermostaat blijven zoals ze zijn:* **1, minimaal.** Ook de beste
+  eerste stap om te zien dat je bedrading klopt, en de terugval als er iets mis is.
+- *De ketel automatisch laten meewerken, maar je kunt of wilt geen AVR programmeren:* **2, de originele IC2.** Je ziet minder
+  en de bijstook is grof, maar je hoeft niets te branden. Experimenteel.
+- *Alles zien en sturen, of een ketel/thermostaat die iets bijzonders vraagt:* **4, eigen AVR v2.** Nieuwe bouwers die
+  willen branden kiezen v2. v1 blijft werken voor bestaande opstellingen.
+- *Een Data-ID, de buitentemperatuur naar de thermostaat of een regeltabel per ID:* alleen **v2**.
 
-### Geen AVR kunnen programmeren? `avr_versie: "org"` (experimenteel)
+De keuze maak je met `avr_versie` bovenin `aurea-wp.yaml`; laat je hem staan, dan compileert het bestand niet (de
+foutmelding noemt `avr-brug-vKIES_1_2_OF_ORG...`). Optie 1 kies je door het minimaal-voorbeeld over `aurea-wp.yaml` heen te
+kopiëren. Meer per optie hieronder.
 
-De originele ATmega8 (Haddon T1.1) kan gewoon in de IC2-voet blijven. Hij doet zelf het OpenTherm-gesprek met thermostaat en
-ketel; de ESP32 praat met hem over de 9615-baud-link die al op de print ligt en speelt de rol van de originele IC1. Je hoeft
-dan niets te branden. De prijs: de IC2 geeft veel minder door (geen kamertemperatuur, geen ketelgegevens, geen
-buitentemperatuur naar de thermostaat, de ketelrem is alles-of-niets) en deze variant is **nog niet op een echte IC2
-geprobeerd**. Begin met `org_alleen_luisteren: "true"`. Alles staat in [docs/ic2-origineel.md](docs/ic2-origineel.md).
 
-## De IC2-kant is optioneel
+### Optie 1: minimaal (IC2-voet leeg)
 
 `aurea-wp.yaml` is de volledige opzet. Wil je alleen de warmtepomp en laat je de
 IC2-voet leeg, dan ligt er een uitgeklede variant klaar als
@@ -106,6 +114,41 @@ Assistant houdt daarmee het apparaat en de geschiedenis van alle sensoren die in
 beide varianten zitten, en je krijgt er bij de volledige opzet alleen de
 thermostaat- en ketelentiteiten bij.
 
+### Optie 2: de originele IC2 laten zitten (`avr_versie: "org"`, experimenteel)
+
+De originele ATmega8 (Haddon T1.1) kan gewoon in de IC2-voet blijven. Hij doet zelf het OpenTherm-gesprek met thermostaat en
+ketel; de ESP32 praat met hem over de 9615-baud-link die al op de print ligt en speelt de rol van de originele IC1. Je hoeft
+dan niets te branden. De prijs: de IC2 geeft veel minder door (geen kamertemperatuur, geen ketelgegevens, geen
+buitentemperatuur naar de thermostaat, de ketelrem is alles-of-niets) en deze variant is **nog niet op een echte IC2
+geprobeerd**. Begin met `org_alleen_luisteren: "true"`. Alles staat in [docs/ic2-origineel.md](docs/ic2-origineel.md).
+
+
+### Optie 3 en 4: een eigen AVR in IC2 (v1 of v2)
+
+Zit er een ATmega328P-brug in IC2, dan zijn er twee versies. Ze praten een ander protocol met de ESP32, dus de
+firmware van de AVR en de yaml moeten bij elkaar passen:
+
+| | AVR-brug **v1** | AVR-brug **v2** |
+|---|---|---|
+| Firmware | `firmware/avr-bridge/avr-bridge.hex` | `firmware/avr-bridge-v2/avr-bridge-v2.hex` |
+| Link naar de ESP32 | 9600 baud | 38400 baud met CRC |
+| Component | `aurea_link` | `aurea_link2` |
+| Extra | | regeltabel per Data-ID, **buitentemperatuur naar de thermostaat (werkt alleen vanaf AVR v2)**, automatische TX-polariteit, versie in Diagnose |
+
+**Nieuwe bouwers: kies v2.** v1 blijft werken voor bestaande opstellingen, maar krijgt geen nieuwe functies meer (de
+buitentemperatuur naar de thermostaat werkt alleen met v2). De v1-variant van deze yaml compileert, maar is na de
+herstructurering (keuze via `avr_versie`) niet op hardware gedraaid; ging het bij jou mis, dan staat de vorige stand op
+de tag `voor-v2`. AVR v2 draait sinds 26-10-2026 op één opstelling (OpenTherm-ketel, Remeha iSense); op andere ketels
+en thermostaten is hij nog niet getest.
+
+**Bovenin `aurea-wp.yaml` staat `avr_versie`.** Zet die op `"1"` of `"2"`, naar de AVR die je hebt gebrand, of op `"org"` als je
+de originele IC2 laat zitten (zie hieronder). Laat je hem staan, dan compileert het bestand niet (de foutmelding noemt
+`avr-brug-vKIES_1_2_OF_ORG...`): je moet dus bewust kiezen.
+Kies je de verkeerde versie, dan praten ESP32 en AVR niet met elkaar: *Brug verbonden* blijft uit en de warmtepomp
+doet niet mee, terwijl de ketel de thermostaat blijft volgen (de brug valt terug; bij v2 na enkele minuten). Welke versie in de ESP32 verwacht wordt, zie je terug onder **Diagnose**
+(*AVR-versie (verwacht)*; bij v2 ook *AVR-versie (gemeld)*). Meer over v2: [docs/avr-v2.md](docs/avr-v2.md).
+
+
 ## Wat je nodig hebt
 
 ### Voor IC1 — de warmtepompkant
@@ -115,7 +158,8 @@ juiste pinnen vrij werkt. Zie [WIRING.md](WIRING.md).
 
 ### Voor IC2 — de OpenTherm-brug *(optioneel)*
 
-Sla dit over als je de minimale opzet draait.
+Sla dit over als je de minimale opzet draait, of als je de originele IC2 laat zitten (optie 2): dan hoef je niets te
+kopen of te branden. Wat hieronder staat gaat over een **eigen AVR** (optie 3 en 4).
 
 Een **ATmega328P-PU in DIP-28**. Dat is dezelfde behuizing als de originele
 ATmega8, dus hij past rechtstreeks in de bestaande voet.
@@ -176,6 +220,9 @@ dat is precies wat je nodig hebt: GPIO18/19 van de ESP32 op IC1-pin 3 en 2,
 ---
 
 ## Wat de brug in IC2 doet
+
+*Dit geldt voor een eigen AVR (optie 3 en 4). De originele IC2 (optie 2) kan alleen de rem aan of uit zetten en de
+warmtepomptemperaturen tonen, zie [docs/ic2-origineel.md](docs/ic2-origineel.md).*
 
 Hij zit **tussen** de thermostaat en de ketel en geeft het OpenTherm-gesprek
 letterlijk door, met een paar uitzonderingen die je vanuit Home Assistant
@@ -518,7 +565,7 @@ cp secrets.yaml.example secrets.yaml   # wifi + api-sleutel invullen
 esphome run aurea-wp.yaml              # eerste keer via USB, daarna OTA
 ```
 
-Zet eerst `avr_versie` bovenin `aurea-wp.yaml` op `"1"` of `"2"` (zie *Welke AVR-brug heb je?*), anders compileert het bestand niet.
+Zet eerst `avr_versie` bovenin `aurea-wp.yaml` op `"1"`, `"2"` of `"org"` (zie *Kies je opzet*), anders compileert het bestand niet.
 
 Nog geen chip in de IC2-voet? Kopieer dan eerst
 `aurea-wp-minimaal.yaml.example` over `aurea-wp.yaml` heen.
@@ -541,7 +588,7 @@ repo gehaald, dus alles kan in de webinterface.
          type: git
          url: https://github.com/Aapjedotinfo/atlantic-aurea-esphome
          ref: main
-       components: [chofu_wp, aurea_link, aurea_link2]
+       components: [chofu_wp, aurea_link, aurea_link2, aurea_link_org]
 
    packages:
      avr_brug:
@@ -551,8 +598,8 @@ repo gehaald, dus alles kan in de webinterface.
          - avr-brug-v${avr_versie}.yaml
    ```
 
-   Zet ook `avr_versie` bovenin op `"1"` of `"2"` (zie *Welke AVR-brug heb je?*).
-   Bij de minimale opzet mogen `aurea_link`, `aurea_link2` en het `packages`-blok weg.
+   Zet ook `avr_versie` bovenin op `"1"`, `"2"` of `"org"` (zie *Kies je opzet*).
+   Bij de minimale opzet mogen `aurea_link`, `aurea_link2`, `aurea_link_org` en het `packages`-blok weg.
 
 3. Menu rechtsboven → **Secrets** → `wifi_ssid`, `wifi_password`,
    `fallback_password` en `api_encryption` toevoegen.

@@ -3,6 +3,9 @@
 **Status: draait sinds 26-10-2026 op één opstelling (OpenTherm-ketel, Remeha iSense): 0 gemiste berichten, 0 herstarts van de brug. Andere ketels en thermostaten zijn nog niet getest. Begin op de bank met de ketel geblokkeerd.**
 Kies de versie met `avr_versie` bovenin `aurea-wp.yaml`; de yaml en de AVR-firmware moeten dezelfde versie zijn.
 
+Naast v1 en v2 is er `avr_versie: "org"`: de originele IC2 blijft zitten, zonder eigen firmware en met veel minder functies.
+Een vergelijking van alle opties staat onder *Kies je opzet* in de [README](../README.md).
+
 Een nieuwe versie van de ATmega328P-brug (firmware/avr-bridge-v2) met een nieuw protocol tussen de ESP32 en de AVR,
 en het bijbehorende ESPHome-component `aurea_link2`. De huidige brug (firmware/avr-bridge) blijft onveranderd.
 

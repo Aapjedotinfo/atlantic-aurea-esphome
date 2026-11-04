@@ -2,6 +2,9 @@
 
 Hoort bij [../docs/volledige-controlbox.md](../docs/volledige-controlbox.md).
 
+Geen AVR kunnen of willen programmeren? Dan kan de originele IC2 blijven zitten (`avr_versie: "org"`), met minder functies;
+zie [../docs/ic2-origineel.md](../docs/ic2-origineel.md) en *Kies je opzet* in de [README](../README.md).
+
 | Map | Fase | Wat het doet |
 |---|---|---|
 | `avr-bridge/` | 2 | **De echte brug.** Geeft OpenTherm door tussen thermostaat en CV-ketel, praat op 9600 baud met de ESP32 in de IC1-voet, en trekt zelf de noodbrug aan als die zwijgt. |
