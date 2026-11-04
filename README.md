@@ -554,7 +554,8 @@ repo gehaald, dus alles kan in de webinterface.
 > de verbinding, en met een andere naam krijg je er een tweede device bij.
 
 > ESPHome cachet git-bronnen. Update je later een component in deze repo, zet dan
-> tijdelijk `refresh: 0s` in het `source`-blok — anders bouwt hij door op de
+> tijdelijk `refresh: 0s` bij `external_components` (naast `source:` en `components:`,
+> dus niet erbinnen) en bij `packages` (naast `files:`), anders bouwt hij door op de
 > oude kopie.
 
 Liever tóch lokale bestanden in de addon? Zet dan de yaml van je keuze in
