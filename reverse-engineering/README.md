@@ -11,11 +11,19 @@ Analyse van de firmware van de twee ATmega8-chips in de controlbox van de Atlant
 | `analyse-volledig/*.py` | de analyse- en emulatiescripts (AVR-decoder, dekking, emulator en experimenten) |
 | `analyse-volledig/*.csv`, `*.md`, `*.txt` | dekkingskaart, functielijsten, aanroepgraaf, IO- en RAM-kruisverwijzingen, telegramtabellen |
 
-## Wat hier niet staat
+## De originele ROM's (`rom/`)
 
-De ruwe flash-dumps en de volledige disassembly-listings zijn **niet** gepubliceerd: ze bevatten de firmware
-van de fabrikant. Wie zelf een dump uit zijn eigen chips leest, kan de listings en dekking met de scripts opnieuw
-laten maken (`coverage.py`, `static_analysis.py`, `analyze.py`).
+De uitgelezen firmware van beide ATmega8's, voor wie ze wil terugzetten of zelf wil onderzoeken. Het is de firmware
+van de fabrikant (Atlantic, "Haddon"), hier gezet voor onderzoek, herstel en interoperabiliteit.
+
+| Bestand | Inhoud |
+|---|---|
+| `rom/Haddon M1.1 - ATMEGA8@DIP28.BIN`, `rom/Haddon T1.1 - ATMEGA8@DIP28.BIN` | de ruwe dumps: 8192 bytes flash (0x0000-0x1FFF) plus 512 bytes EEPROM (0x2000-0x21FF, overal 0xFF) |
+| `rom/Haddon_M1.1_flash.hex`, `rom/Haddon_T1.1_flash.hex` | alleen de flash, als Intel-hex voor een programmer (records met alleen 0xFF zijn weggelaten; byte voor byte gelijk aan de dump) |
+
+M1.1 hoort in de IC1-voet, T1.1 in de IC2-voet. De fuses staan niet in de dump (zie het rapport, sectie 2.6).
+De volledige disassembly-listings staan hier niet; die laten zich met de scripts uit de dump opnieuw maken
+(`coverage.py`, `static_analysis.py`, `analyze.py`).
 
 ## Belangrijkste uitkomsten
 
