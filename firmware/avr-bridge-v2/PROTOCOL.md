@@ -1,9 +1,7 @@
 # Linkprotocol AVR-brug v2 (protocolversie 2)
 
 Stand 26-10-2026. Bij firmware **2.0.0**. Dit document is bindend voor beide kanten: met alleen dit document moet de ESP-kant
-(`aurea_link`) te bouwen zijn zonder de AVR-code te lezen. Gebaseerd op `unit2-documentatie\avr-v2-ontwerp-onderscheppen.md`;
-waar dit document daarvan afwijkt of iets invult staat dat in hoofdstuk 11.
-
+(`aurea_link`) te bouwen zijn zonder de AVR-code te lezen.
 Alle hexdumps in hoofdstuk 12 zijn gemaakt met `tools/protocol_ref.py`, een encoder die uit dit document is geschreven en
 **niet** uit de C-code; de C-tests vergelijken beide byte voor byte.
 

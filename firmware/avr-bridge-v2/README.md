@@ -2,10 +2,9 @@
 
 Nieuwe firmware voor de ATmega328P in de IC2-socket van de Atlantic Aurea-controlbox: de OpenTherm-brug tussen thermostaat en
 CV-ketel, aangestuurd door de ESP32. Dit is een **nieuwe, aparte map**; v1 (`..\avr-bridge\`) is niet gewijzigd.
-**Niets hiervan is geflasht of op hardware geprobeerd.** Wat op de PC getest is en wat alleen op de bank kan staat onderaan.
+Gebruikt op één opstelling (zie `docs/avr-v2.md`); wat nog op de bank gemeten moet worden staat onderaan.
 
-Documenten: `PROTOCOL.md` (exacte bytelayout, bindend voor de ESP-kant), dit bestand, en het ontwerp
-`unit2-documentatie\avr-v2-ontwerp-onderscheppen.md`.
+Documenten: `PROTOCOL.md` (exacte bytelayout, bindend voor de ESP-kant) en dit bestand.
 
 ## Wat v2 is, en het verschil met v1
 
