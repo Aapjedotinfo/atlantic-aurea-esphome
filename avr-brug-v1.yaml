@@ -47,3 +47,71 @@ aurea_link:
 #       - lambda: |-
 #           const float buiten = id(wp)->get_outside();
 #           if (!std::isnan(buiten)) id(otlink)->override_to_thermostat(27, buiten);
+
+switch:
+  # Ketelkant (9-11-2026, voor ketels waarbij "Ketel verbonden" uit blijft, bv. Atag): drie handschakelaars. De AVR leest de
+  # vlaggen uit het commando van de ESP en meldt de stand terug; de AVR hoeft dus niet opnieuw geflasht. Standaard UIT (= de
+  # vaste instelling van de AVR: TX_INVERT_BOILER 0, geen verwisseling). Alleen met avr_versie "1" of "2"; bij "org" bestaat dit niet.
+  - platform: template
+    name: "Ketel leesrichting omkeren"
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_OFF
+    entity_category: config
+    icon: mdi:swap-vertical
+    turn_on_action:
+      - lambda: 'id(otlink)->set_invert_boiler(true);'
+    turn_off_action:
+      - lambda: 'id(otlink)->set_invert_boiler(false);'
+
+  - platform: template
+    name: "Ketel zendpolariteit omkeren"
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_OFF
+    entity_category: config
+    icon: mdi:swap-vertical
+    turn_on_action:
+      - lambda: 'id(otlink)->set_invert_tx_boiler(true);'
+    turn_off_action:
+      - lambda: 'id(otlink)->set_invert_tx_boiler(false);'
+
+  - platform: template
+    name: "Kanalen verwisselen"
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_OFF
+    entity_category: config
+    icon: mdi:swap-horizontal
+    turn_on_action:
+      - lambda: 'id(otlink)->set_swap_channels(true);'
+    turn_off_action:
+      - lambda: 'id(otlink)->set_swap_channels(false);'
+
+sensor:
+  # Diagnose ketelkant (9-11-2026): zie wat de brug aan de ketelkant ziet. -1 = nog geen data van de AVR.
+  - platform: template
+    name: "Ketel flanken"
+    lambda: 'return (float) id(otlink)->get_boiler_edges();'
+    update_interval: 5s
+    accuracy_decimals: 0
+    entity_category: diagnostic
+    icon: mdi:sine-wave
+  - platform: template
+    name: "Ketel leesfouten"
+    lambda: 'return (float) id(otlink)->get_rx_errors_boiler();'
+    update_interval: 5s
+    accuracy_decimals: 0
+    entity_category: diagnostic
+    icon: mdi:alert-circle-outline
+  - platform: template
+    name: "Pariteitsfouten"
+    lambda: 'return (float) id(otlink)->get_parity_fails();'
+    update_interval: 5s
+    accuracy_decimals: 0
+    entity_category: diagnostic
+    icon: mdi:alert-circle-outline
+  - platform: template
+    name: "Lijnen ruw"
+    lambda: 'return (float) id(otlink)->get_lines_raw();'
+    update_interval: 5s
+    accuracy_decimals: 0
+    entity_category: diagnostic
+    icon: mdi:electric-switch

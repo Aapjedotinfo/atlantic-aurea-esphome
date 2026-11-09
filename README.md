@@ -45,6 +45,7 @@ geeft alleen twee setpoints door; een eigen AVR geeft elk frame door aan de ESP3
 | Bijstook op een gekozen ketelsetpoint | — | — | ✅ | ✅ |
 | Warmtepomptemperaturen aan de thermostaat tonen | — | ✅ | ✅ | ✅ |
 | Buitentemperatuur aan de thermostaat | — | — | — | ✅ |
+| Ketelpolariteit instelbaar (schakelaars "Ketel leesrichting/zendpolariteit omkeren", "Kanalen verwisselen") en ketel-diagnose | — | — (staat vast in de originele IC2) | ✅ | ✅ |
 | Noodbrug als de ESP32 wegvalt | — | ✅ (240 s) | ✅ | ✅ |
 | Extra bedrading | alleen GPIO16/17 | + deler op GPIO19 | + deler op GPIO19 | + deler op GPIO19 |
 | Terug naar fabrieksstaat | origineel in IC2 | origineel blijft zitten | origineel bewaren | origineel bewaren |
