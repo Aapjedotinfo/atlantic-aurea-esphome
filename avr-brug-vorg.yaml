@@ -14,6 +14,12 @@
 # De "rem" is hier alles of niets: aan = de IC2 houdt de ketel tegen, uit = hij geeft de ketel vrij.
 #
 # Op de print: dipswitch 2 op ON (= OpenTherm-ketel). De ESP32 zit in de IC1-voet, de originele ATmega8 in de IC2-voet.
+#
+# Aan/uit-ketel (op het contact van K3): dipswitch 2 op OFF en de frontschakelaar dicht. De originele IC2 stuurt dan geen
+# OpenTherm naar de ketel, antwoordt de thermostaat zelf en sluit K3 (PC5) bij een ketelsetpoint >= 20 C, maar alleen als
+# de ketel mag bijstoken (rem uit). Met de rem aan blijft K3 open. Na 240 s zonder ESP volgt K3 de thermostaat.
+# Er is hier geen schakelaar voor en de stand van K3 komt niet terug naar de ESP (RAPPORT.md 6.2/6.3; emulator, niet op
+# een echte IC2 getest).
 
 substitutions:
   ot_ns: esphome::aurea_link_org

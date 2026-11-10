@@ -46,6 +46,7 @@ geeft alleen twee setpoints door; een eigen AVR geeft elk frame door aan de ESP3
 | Warmtepomptemperaturen aan de thermostaat tonen | — | ✅ | ✅ | ✅ |
 | Buitentemperatuur aan de thermostaat | — | — | — | ✅ |
 | Ketelpolariteit instelbaar (schakelaars "Ketel leesrichting/zendpolariteit omkeren", "Kanalen verwisselen") en ketel-diagnose | — | — (staat vast in de originele IC2) | ✅ | ✅ |
+| Aan/uit-ketel op het contact van K3 (schakelaar "Ketel aan-uit-contact") | — | ✅ met dipswitch 2 OFF, geen terugmelding | ✅ (ketelklemmen krijgen nog OpenTherm, onschuldig) | ✅ geen OpenTherm naar de ketel |
 | Noodbrug als de ESP32 wegvalt | — | ✅ (240 s) | ✅ | ✅ |
 | Extra bedrading | alleen GPIO16/17 | + deler op GPIO19 | + deler op GPIO19 | + deler op GPIO19 |
 | Terug naar fabrieksstaat | origineel in IC2 | origineel blijft zitten | origineel bewaren | origineel bewaren |
@@ -568,6 +569,9 @@ esphome run aurea-wp.yaml              # eerste keer via USB, daarna OTA
 
 Zet eerst `avr_versie` bovenin `aurea-wp.yaml` op `"1"`, `"2"` of `"org"` (zie *Kies je opzet*), anders compileert het bestand niet.
 
+Geen Home Assistant? Zie [docs/esp-updaten-zonder-ha.md](docs/esp-updaten-zonder-ha.md): bouwen en flashen met ESPHome op je
+eigen pc, het dashboard of ESPHome Web.
+
 Nog geen chip in de IC2-voet? Kopieer dan eerst
 `aurea-wp-minimaal.yaml.example` over `aurea-wp.yaml` heen.
 
@@ -679,6 +683,13 @@ Houd het setpoint hoog genoeg (vuistregel: boven ~17 °C) of isoleer je leidinge
 **De dipswitches op de print.** Dip 2 zit op socket-pin 25 (PC2) en bepaalt het
 keteltype: **ON = OpenTherm-bedrijf.** Op OFF is het een aan/uit-ketel: er komt geen
 OpenTherm-verkeer naar de ketel (de originele T1.1 speelt dan zelf slave).
+
+**Aan/uit-ketel op K3.** K3 (socket-pin 28, PC5) is een relais met een droog wisselcontact
+van 10 A; de frontschakelaar zit in serie en moet dicht. K3 sluit bij een ketelsetpoint van
+20 °C of meer en blijft open zolang de rem aan staat. Met AVR v1/v2: zet de schakelaar
+"Ketel aan-uit-contact" aan (standaard uit). Met de originele IC2: dipswitch 2 op OFF.
+Valt de ESP32 weg, dan gaat K3 bij v2 open; bij v1 en het origineel volgt hij de thermostaat.
+Nog niet op hardware getest.
 
 ## Credits
 

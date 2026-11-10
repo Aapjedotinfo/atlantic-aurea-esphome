@@ -85,6 +85,34 @@ switch:
     turn_off_action:
       - lambda: 'id(otlink)->set_swap_channels(false);'
 
+  # Ketel aan/uit-contact (10-11-2026): voor een ketel die op het droge contact van K3 hangt in plaats van op OpenTherm.
+  # K3 (PC5, socket-pin 28) is een relais (Omron G2R-1, 10 A wisselcontact) via T4; de frontschakelaar zit in serie en moet
+  # dicht staan, anders trekt K3 nooit aan. Aan = K3 vrijgegeven: de AVR sluit K3 zodra het ketelsetpoint >= 20 C is
+  # (met de rem aan geldt het remsetpoint van 10 C, dus K3 open). K3 en de noodbrug nooit samen (gedeelde R27).
+  # Verschillen met v2: v1 kent geen apart keteltype; hij blijft OpenTherm op de ketelklemmen zetten (bij een aan/uit-ketel
+  # hangt daar niets aan, dus onschuldig) en antwoordt de thermostaat zelf als de ketel niet antwoordt. Valt de ESP weg,
+  # dan blijft de vrijgave staan en gaat de rem eraf: K3 volgt dan de thermostaat (zoals het origineel na 240 s).
+  # Standaard UIT, dan blijft K3 altijd open (zo was het).
+  - platform: template
+    name: "Ketel aan-uit-contact"
+    id: sw_ketel_aanuit
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_OFF
+    entity_category: config
+    icon: mdi:electric-switch-closed
+    turn_on_action:
+      - lambda: 'id(otlink)->set_demand_enabled(true);'
+    turn_off_action:
+      - lambda: 'id(otlink)->set_demand_enabled(false);'
+
+binary_sensor:
+  # Stand van K3 (PC5) zoals de AVR hem meldt.
+  - platform: template
+    name: "Ketel aan-uit-contact (K3)"
+    lambda: 'return id(otlink)->get_demand_out();'
+    entity_category: diagnostic
+    icon: mdi:radiator
+
 sensor:
   # Diagnose ketelkant (9-11-2026): zie wat de brug aan de ketelkant ziet. -1 = nog geen data van de AVR.
   - platform: template
