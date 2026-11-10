@@ -211,6 +211,30 @@ switch:
     turn_off_action:
       - lambda: 'id(otlink)->set_swap_channels(false);'
 
+  # Ketel aan/uit-contact (10-11-2026): voor een ketel die in aan/uit-modus hangt (bv. Atag) in plaats van OpenTherm.
+  # Aan = keteltype "aan/uit" en K3 vrijgegeven: de AVR stuurt dan GEEN OpenTherm meer naar de ketel en sluit K3 (PC5, pin 28)
+  # zodra het ketelsetpoint van de thermostaat (ID 1) >= 20 C is en de bijstook niet geremd is (rem = 10 C, dus K3 open).
+  # Alles daarvoor zit al in de AVR-v2-firmware (brug.c relais_bijwerken): K3 en de noodbrug nooit samen, 50 ms ertussen,
+  # K3 open bij opstart. Valt de ESP weg, dan wist de AVR na de geldigheid ons commando (keteltype terug naar de dipswitch),
+  # dus K3 gaat open; staat dipswitch 2 laag, dan volgt na 240 s de gewone noodbrug. Uit (standaard) = keteltype volgens de
+  # dipswitch en K3 geblokkeerd, precies zoals het was. Polariteit is niet instelbaar: op de originele print stuurt PC5 via
+  # T4 een relais (Omron G2R-1, frontschakelaar in serie), actief hoog.
+  - platform: template
+    name: "Ketel aan-uit-contact"
+    id: sw_ketel_aanuit
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_OFF
+    entity_category: config
+    icon: mdi:electric-switch-closed
+    turn_on_action:
+      - lambda: |-
+          id(otlink)->set_boiler_type(esphome::aurea_link2::KETEL_AANUIT);
+          id(otlink)->set_demand_enabled(true);
+    turn_off_action:
+      - lambda: |-
+          id(otlink)->set_demand_enabled(false);
+          id(otlink)->set_boiler_type(esphome::aurea_link2::KETEL_DIP);
+
 button:
   - platform: template
     name: "TX-polariteit opnieuw bepalen"
@@ -261,3 +285,16 @@ sensor:
     accuracy_decimals: 0
     entity_category: diagnostic
     icon: mdi:electric-switch
+
+binary_sensor:
+  # Stand van K3 (PC5) zoals de AVR hem meldt (status io bit 2), en of de AVR in aan/uit-modus staat (io bit 3).
+  - platform: template
+    name: "Ketel aan-uit-contact (K3)"
+    lambda: 'return id(otlink)->get_demand_out();'
+    entity_category: diagnostic
+    icon: mdi:radiator
+  - platform: template
+    name: "Keteltype aan-uit actief"
+    lambda: 'return id(otlink)->get_onoff_boiler();'
+    entity_category: diagnostic
+    icon: mdi:radiator-off
