@@ -86,6 +86,23 @@ for(var i=0;i<14;i++){var y=18+i*13.4;
 <li>De ESP32 zit met de USB-connector naar de zeefdruk &ldquo;USB&rdquo;.</li>
 </ol>
 
+<h2>3. Inloggen op de hotspot (eerste keer instellen)</h2>
+<div class="k">Alleen als de ESP32 zonder eigen wifi-gegevens is geflasht. Heb je ze al ingebouwd in je eigen config, dan verschijnt hij gewoon op je netwerk.</div>
+<div class="cols"><div>
+<ol>
+<li>Zet de voeding aan en wacht &plusmn; 1 minuut.</li>
+<li>Telefoon of laptop &rarr; wifi &rarr; netwerk <b>Aurea-WP</b>, wachtwoord <b><code>aureahybrid</code></b>.</li>
+<li>De inlogpagina opent vanzelf, anders <b><code>http://192.168.4.1</code></b>.</li>
+<li>Kies je eigen wifi, vul je wachtwoord in en bevestig.</li>
+<li>Het apparaat herstart en verbindt met je router; de hotspot verdwijnt. Daarna verschijnt hij in Home Assistant.</li>
+</ol>
+</div><div>
+<ul>
+<li>Je telefoon meldt &ldquo;geen internet&rdquo;: blijf verbonden.</li>
+<li>Hotspot niet te zien? Voeding eraf en weer aan; kom niet verder dan een paar meter.</li>
+<li>Komt hij later niet meer op je wifi? Na 15 min zonder netwerk start de hotspot opnieuw.</li>
+</ul>
+</div></div>
 <h1 class="nieuw">Controlbox: waar komt wat?</h1>
 <div class="k">Schematisch, gezien van boven met de schroefklemmen (netspanning, buitenunit) <b>onderaan</b>, zoals de box aan de muur hangt. Niet op schaal.</div>
 
@@ -150,23 +167,7 @@ for(var i=0;i<14;i++){var y=18+i*13.4;
 <li>Aan de Anna/Smile-klemmen, de ketel-klemmen en de thermostaatkabels verandert niets.</li>
 </ul>
 
-<h2>3. Inloggen op de hotspot (eerste keer instellen)</h2>
-<div class="k">Alleen als de ESP32 zonder eigen wifi-gegevens is geflasht. Heb je ze al ingebouwd in je eigen config, dan verschijnt hij gewoon op je netwerk.</div>
-<div class="cols"><div>
-<ol>
-<li>Zet de voeding aan en wacht &plusmn; 1 minuut.</li>
-<li>Telefoon of laptop &rarr; wifi &rarr; netwerk <b>Aurea-WP</b>, wachtwoord <b><code>aureahybrid</code></b>.</li>
-<li>De inlogpagina opent vanzelf, anders <b><code>http://192.168.4.1</code></b>.</li>
-<li>Kies je eigen wifi, vul je wachtwoord in en bevestig.</li>
-<li>Het apparaat herstart en verbindt met je router; de hotspot verdwijnt. Daarna verschijnt hij in Home Assistant.</li>
-</ol>
-</div><div>
-<ul>
-<li>Je telefoon meldt &ldquo;geen internet&rdquo;: blijf verbonden.</li>
-<li>Hotspot niet te zien? Voeding eraf en weer aan; kom niet verder dan een paar meter.</li>
-<li>Komt hij later niet meer op je wifi? Na 15 min zonder netwerk start de hotspot opnieuw.</li>
-</ul>
-</div></div>
+
 <h2>4. Toevoegen in Home Assistant</h2>
 <div class="k">Home Assistant vraagt bij het toevoegen om de versleutelingssleutel van de ESP32. Deze is voor alle exemplaren gelijk. Kopieer hem; typ hem niet over.</div>
 <div class="stop" style="border-width:2px"><b>API-sleutel (Encryption key):</b> <code>Z2VoZWltZWFwaWtleSEhISEhISEhISEhISEhISEhISE=</code></div>
@@ -177,4 +178,5 @@ for(var i=0;i<14;i++){var y=18+i*13.4;
 </ul>
 
 <div class="k"><b>Aan de thermostaat (Anna e.d.) hoeft niets te veranderen.</b> Valt de ESP32 of het netwerk uit, dan schakelt de controlbox de thermostaat rechtstreeks door naar de ketel, dus het huis blijft warm.</div>
+
 </body></html>
