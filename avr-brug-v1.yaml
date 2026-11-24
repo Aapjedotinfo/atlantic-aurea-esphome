@@ -9,6 +9,8 @@ substitutions:
   # Is er een thermostaat? Aan als de AVR dat meldt, of als er in de laatste 10 s een bericht van de thermostaat
   # (Data-ID 0) binnenkwam.
   thermo_ok: "id(otlink)->get_thermostat_ok() || ([&]() { const int a = id(otlink)->get_ot_age(0, ${ot_ns}::OT_FROM_STAT); return a >= 0 && a <= 10; })()"
+  # v1 haalt de CV-vlag alleen weg met "Ketel CV-vlag onderdrukken", niet bij de rem. Zo blijft dat.
+  rust_cv_vlag_eraf: "false"
 
 uart:
   # ───────────────────────────────────────────────────────────────

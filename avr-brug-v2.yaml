@@ -10,6 +10,9 @@ substitutions:
   dip_bekend: "true"
   # Is er een thermostaat? Het bit dat de AVR zelf meldt (LINK_STAT_ALIVE).
   thermo_ok: "id(otlink)->get_thermostat_ok()"
+  # In rust (rem aan, geen bijspringen) haalt de ESP de CV-vlag eraf; de AVR doet het niet meer zelf. Zie de regels
+  # cv_vlag_naar_ketel en kamersetpoint_naar_ketel hieronder en het script cv_vlag_bijwerken in aurea-wp.yaml.
+  rust_cv_vlag_eraf: "true"
 
 uart:
   # ───────────────────────────────────────────────────────────────
@@ -54,6 +57,26 @@ aurea_link2:
   # wordt alleen op een geldig ketelantwoord toegepast. Daarom houdt de AVR het antwoord vast (vraag) en vervangen wij het
   # door een READ-ACK met onze waarde (zie on_vraag). Lukt dat niet in de deadline, dan gaat het ketelantwoord ongewijzigd door.
   onderscheppen:
+    # Bijspringen: de standaardregels std_ch_vlag (ID 0) en std_kamer_setpoint (ID 16) hangen aan "rem toegepast".
+    # Maar bij bijspringen staat de rem ook aan, alleen op het bijstooksetpoint (bv. 55 C). Dan kreeg de ketel 55 C zonder
+    # CV-vraag en een kamersetpoint van 8 C, en brandde hij niet (Tweakers, 24-11-2026). Daarom hangen deze twee nu aan
+    # ch_off, dat de ESP zet: aan in rust, uit bij bijspringen (script cv_vlag_bijwerken in aurea-wp.yaml).
+    # Valt de ESP weg, dan neemt de AVR zijn eigen standaardtabel weer over en geldt de oude, veilige regel.
+    - id: 0
+      richting: "T>K"
+      modus: vast
+      conditie: ch_off
+      masker: true
+      wis: 0x01   # CH-enable eraf
+      zet: 0x02   # DHW-enable aan, zoals de standaardregel
+      naam: cv_vlag_naar_ketel
+    - id: 16
+      richting: "T>K"
+      modus: vast
+      conditie: ch_off
+      forceer: true
+      parameter: 0x0800   # 8,0 C, zoals de standaardregel
+      naam: kamersetpoint_naar_ketel
     - id: 27
       richting: "K>T"
       modus: vraag

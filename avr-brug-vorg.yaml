@@ -26,6 +26,8 @@ substitutions:
   avr_verwacht: "Originele IC2 (Haddon T1.1, ATmega8) in de IC2-voet, geen eigen firmware"
   # De IC2 meldt niet of er een thermostaat meepraat; zolang hij frames stuurt nemen we aan van wel.
   thermo_ok: "id(otlink)->get_thermostat_ok()"
+  # De originele IC2 kent geen CV-vlag onderdrukken (set_ch_off doet niets).
+  rust_cv_vlag_eraf: "false"
   # De dipswitch (PC2) is hier niet uit te lezen.
   dip_bekend: "false"
   # Overschrijfbaar vanuit aurea-wp.yaml.

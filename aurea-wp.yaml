@@ -175,6 +175,9 @@ interval:
   - interval: 30s
     then:
       - lambda: |-
+          // Bijspringen geldt alleen voor deze ronde; de takken hieronder die
+          // de ketel echt laten bijstoken zetten het weer aan.
+          id(g_bijstook) = false;
           if (!id(sw_koppeling)->state) { id(g_reden) = "koppeling uit"; return; }
 
           // ── Net opgestart: ketel geblokkeerd houden ──
@@ -315,10 +318,30 @@ interval:
           const bool lang_genoeg = id(g_tekort_s) >= wacht_s;
           const bool koud_genoeg = !std::isnan(buiten) && buiten < id(n_bijstook_buiten)->state;
 
+          // ── Het bijstooksetpoint ──
+          // Het ingestelde niveau, maar minstens "Bijstook minimaal boven
+          // WP-aanvoer" boven wat de warmtepomp nu levert; anders ziet de ketel
+          // al voorverwarmd water op zijn setpoint en start hij niet. Bij
+          // vangnet 3 ook minstens de vraag van de thermostaat. Hoogstens 80.
+          auto bijstook_sp = [&](bool ook_vraag) -> float {
+            float sp = id(n_bijstook_niveau)->state;
+            const float marge = id(n_bijstook_marge)->state;
+            if (!std::isnan(aanvoer) && !std::isnan(marge) && marge > 0 && aanvoer + marge > sp)
+              sp = aanvoer + marge;
+            if (ook_vraag && !std::isnan(vraag) && vraag > sp) sp = vraag;
+            return sp > 80.0f ? 80.0f : sp;
+          };
+
           // ── Vangnet 3: de kamer zakt door ──
-          // Ondanks alles blijft het kouder worden. Dan mag het gas er vol in,
-          // ook boven de buitentemperatuurgrens. Uit te zetten als je liever een
+          // Ondanks alles blijft het kouder worden. Dan mag het gas erbij, ook
+          // boven de buitentemperatuurgrens. Uit te zetten als je liever een
           // graad kouder zit dan stookt.
+          //
+          // Niet de rem eraf en de thermostaat laten beslissen: die ziet via de
+          // substitutie de WP-temperaturen en vraagt dan een aanvoer rond wat de
+          // warmtepomp al levert, en dan brandt de ketel niet (Tweakers, 24-11).
+          // Dus net als bij bijspringen: het bijstooksetpoint, of de vraag van
+          // de thermostaat als die hoger ligt, met de CV-vlag door.
           // Zonder kamer van de thermostaat: die uit het externe veld.
           const bool  ot_kamer = !std::isnan(id(otlink)->get_room_temp());
           const float kamer   = ot_kamer ? id(otlink)->get_room_temp() : id(wp)->get_room_temp();
@@ -326,18 +349,27 @@ interval:
           const bool  kamer_zakt = !std::isnan(kamer) && !std::isnan(gewenst) &&
                                    kamer < gewenst - 1.0f;
           if (id(sw_vangnet)->state && kamer_zakt && id(g_tekort_s) >= 2 * wacht_s) {
-            id(sw_brake)->turn_off();
-            id(g_reden) = str_sprintf("kamer %.1f onder gewenst %.1f - ketel vrij",
-                                      kamer, gewenst);
+            const float sp = bijstook_sp(true);
+            id(g_bijstook) = true;
+            id(otlink)->set_brake_setpoint(sp);
+            id(sw_brake)->turn_on();
+            id(cv_vlag_bijwerken).execute();
+            id(g_reden) = str_sprintf("kamer %.1f onder gewenst %.1f - ketel bijstook %.0f gr",
+                                      kamer, gewenst, sp);
             return;
           }
 
           // ── Bijspringen of niet ──
+          // De rem blijft aan, maar op het bijstooksetpoint. De CV-vlag moet dan
+          // wel door (g_bijstook), anders krijgt de ketel 55 graden zonder
+          // CV-vraag en brandt hij niet.
           if (lang_genoeg && koud_genoeg) {
-            id(otlink)->set_brake_setpoint(id(n_bijstook_niveau)->state);
+            id(g_bijstook) = true;
+            const float sp = bijstook_sp(false);
+            id(otlink)->set_brake_setpoint(sp);
             id(sw_brake)->turn_on();
             id(g_reden) = str_sprintf("bijstook %.0f gr - tekort %d min, buiten %.1f",
-                                      id(n_bijstook_niveau)->state,
+                                      sp,
                                       id(g_tekort_s) / 60, buiten);
           } else {
             id(otlink)->set_brake_setpoint(id(n_brake_setpoint)->state);
@@ -365,6 +397,7 @@ interval:
           // de thermostaat in de zelfstandige stand ziet hoe hard er gewerkt
           // wordt in plaats van een vlakke nul.
           id(otlink)->set_standalone_modulation(id(wp)->get_stand() * 10.0f);
+      - script.execute: cv_vlag_bijwerken
 
 globals:
   # Laatst bekende buitentemperatuur van de warmtepomp, voor de ketelgrens als
@@ -389,12 +422,37 @@ globals:
     restore_value: false
     initial_value: '"koppeling uit"'
 
+  # Springt de ketel nu bij (beleid "bijspringen" of vangnet 3)? Dan moet de
+  # CV-vlag van de thermostaat door naar de ketel: met de rem op het
+  # bijstooksetpoint maar zonder CV-vlag brandt een OpenTherm-ketel niet.
+  # Het beleid zet dit elke ronde opnieuw; zie script cv_vlag_bijwerken.
+  - id: g_bijstook
+    type: bool
+    restore_value: false
+    initial_value: 'false'
+
   # Wanneer het stand-plafond voor het laatst geschreven is. Nul betekent
   # "nooit geschreven", dus geen beperking actief en niets te bewaken.
   - id: g_plafond_ms
     type: uint32_t
     restore_value: false
     initial_value: '0'
+
+script:
+  # Bepaalt of de CV-vlag van de thermostaat naar de ketel mag.
+  #   - Springt de ketel bij (g_bijstook): altijd door, ook met "Ketel CV-vlag
+  #     onderdrukken" aan. Anders brandt hij niet.
+  #   - Anders: eraf als de knop aanstaat, of (alleen bij AVR v2, zie
+  #     rust_cv_vlag_eraf in avr-brug-v2.yaml) als de rem aanstaat. Bij v2 deed
+  #     de AVR dat eerst zelf via de standaardregel; die kende het verschil
+  #     tussen rust en bijspringen niet.
+  - id: cv_vlag_bijwerken
+    mode: queued
+    then:
+      - lambda: |-
+          const bool eraf = !id(g_bijstook) &&
+              (id(sw_ch_off)->state || (${rust_cv_vlag_eraf} && id(sw_brake)->state));
+          id(otlink)->set_ch_off(eraf);
 
 logger:
 
@@ -1159,6 +1217,28 @@ number:
       sorting_group_id: grp_beleid
       sorting_weight: 13
 
+  # Hoeveel graden het bijstooksetpoint minstens boven de aanvoer van de
+  # warmtepomp moet liggen. De ketel staat in serie achter de warmtepomp en
+  # krijgt dus al voorverwarmd water. Ligt zijn setpoint daar maar net boven,
+  # dan start hij niet (startdifferentie van de ketel): "bijstook 55 gr" met een
+  # WP-aanvoer van rond de 52 deed niets (Tweakers, 24-11-2026). 0 = uit.
+  - platform: template
+    name: "Bijstook minimaal boven WP-aanvoer"
+    id: n_bijstook_marge
+    min_value: 0
+    max_value: 25
+    step: 1
+    initial_value: 8
+    optimistic: true
+    restore_value: true
+    unit_of_measurement: "K"
+    mode: box
+    icon: mdi:thermometer-plus
+    entity_category: config
+    web_server:
+      sorting_group_id: grp_beleid
+      sorting_weight: 15
+
   # DE KETEL AANSTUREN ZONDER THERMOSTAAT.
   # De brug is dan zelf de OpenTherm-master: hij schrijft dit setpoint naar
   # Data-ID 1 en zet de CV-vlag in Data-ID 0.
@@ -1419,8 +1499,10 @@ switch:
     icon: mdi:fire-off
     turn_on_action:
       - lambda: 'id(otlink)->set_brake(true);'
+      - script.execute: cv_vlag_bijwerken
     turn_off_action:
       - lambda: 'id(otlink)->set_brake(false);'
+      - script.execute: cv_vlag_bijwerken
     web_server:
       sorting_group_id: grp_beleid
       sorting_weight: 1
@@ -1435,10 +1517,12 @@ switch:
     optimistic: true
     restore_mode: RESTORE_DEFAULT_OFF
     icon: mdi:pump-off
+    # Niet rechtstreeks naar de brug: het script combineert deze knop met de
+    # rem en het bijspringen (bij bijspringen gaat de vlag altijd door).
     turn_on_action:
-      - lambda: 'id(otlink)->set_ch_off(true);'
+      - script.execute: cv_vlag_bijwerken
     turn_off_action:
-      - lambda: 'id(otlink)->set_ch_off(false);'
+      - script.execute: cv_vlag_bijwerken
     web_server:
       sorting_group_id: grp_beleid
       sorting_weight: 2
